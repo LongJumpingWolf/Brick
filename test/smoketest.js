@@ -455,8 +455,60 @@ async function main(){
   assert(!hintsBtn.classList.contains('active'), 'Hints button loses its active state on the second press');
 
   // =========================================================
+  // Hints are a SESSION-WIDE toggle, not per-card: press H once and it
+  // should keep applying to every subsequent card without re-pressing.
+  // =========================================================
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'h', bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('session.hintsEnabled') === true, 'Hints enabled for the session');
+  assert(doc.querySelectorAll('.mask-hint-overlay').length === 1, 'hint shows immediately on the card currently being viewed');
+
+  // advance to the next card WITHOUT touching H again
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true })); // reveal
+  await sleep(10);
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(evalInPage('session.hintsEnabled') === true, 'hintsEnabled is still true after moving to the next card — nothing reset it');
+  assert(hintsBtn.classList.contains('active'), 'Hints button automatically shows active on the new card, without pressing H again');
+  assert(doc.querySelectorAll('.mask-hint-overlay').length === 1, 'the new card\'s hint shows automatically, with NO fresh H press needed — got ' + doc.querySelectorAll('.mask-hint-overlay').length);
+
+  // third seeded card (Cytoplasm) has no hint set — button should
+  // reflect that correctly even though the session toggle is still on
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(evalInPage('session.hintsEnabled') === true, 'session toggle itself is untouched by reaching a card with no hint');
+  assert(hintsBtn.disabled, 'Hints button is disabled for a card whose active mask has no hint text');
+  assert(!hintsBtn.classList.contains('active'), 'button does not show falsely-active when there\'s nothing to show, even with the session toggle on');
+  assert(doc.querySelectorAll('.mask-hint-overlay').length === 0, 'no hint overlay renders when the card genuinely has none, session toggle notwithstanding');
+
+  // pressing H on a Basic/Cloze card still flips the session toggle,
+  // it just has no visible card to show it on right now
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20); // finishes the seeded 3-card session
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('session.hintsEnabled') === false, 'a brand-new session starts with hints off again — the toggle does not leak across separate study sessions');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'h', bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('session.hintsEnabled') === true, 'pressing H while viewing a Basic card still flips the session-wide toggle');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
   // Cement: bookmark + auto-Again, toggled by C
   // =========================================================
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
   const cementBtn = doc.getElementById('cementBtn');
   assert(!cementBtn.classList.contains('active'), 'a fresh card starts un-cemented');
   const cementedCardId = evalInPage('currentCard().id');

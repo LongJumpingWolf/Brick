@@ -58,7 +58,11 @@ function beginStudy(){
     order = deck.cards.filter(c => isCardDue(c.id, srsMap)).map(c => c.id);
     if (!order.length) order = deck.cards.map(c => c.id);
   }
-  session = { deckId: deck.id, order, pos:0, revealed:false, timedOutThisAttempt:false, remaining:0, running:false, tickId:null, correct:0, missed:0 };
+  // hintsEnabled lives on the session, initialized ONCE here — not
+  // reset per card in renderStudyCard() — so pressing H sticks for the
+  // rest of this session's cards until you press it again, rather than
+  // needing a fresh press on every single card.
+  session = { deckId: deck.id, order, pos:0, revealed:false, timedOutThisAttempt:false, remaining:0, running:false, tickId:null, correct:0, missed:0, hintsEnabled:false };
   showScreen('screenStudy');
   renderStudyCard();
 }
@@ -88,7 +92,6 @@ async function renderStudyCard(){
 
   session.revealed = false;
   session.timedOutThisAttempt = false;
-  session.hintsShown = false;
   document.getElementById('gradeRow').style.opacity = '0';
   document.getElementById('gradeRow').style.pointerEvents = 'none';
   setTapHint('tap ' + (c.type === 'occlusion' ? 'image' : 'card') + ' to reveal');
@@ -148,7 +151,7 @@ function paintMasks(c){
     // every answer on the card at once, not a hint for the specific
     // thing being asked. Hide One mode already only hides the active
     // box, so this restriction falls out naturally there too.
-    const showHint = hidden && isActive && session.hintsShown && m.hint;
+    const showHint = hidden && isActive && session.hintsEnabled && m.hint;
     const hintOverlay = showHint ? '<div class="mask-hint-overlay">' + formatInline(m.hint) + '</div>' : '';
     return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + hintOverlay + '</div>';
   }).join('');
@@ -159,18 +162,23 @@ function paintMasks(c){
 }
 function toggleHints(){
   const c = currentCard();
-  if (c.type !== 'occlusion') return;
-  session.hintsShown = !session.hintsShown;
-  paintCardContent(c);
-  document.getElementById('hintsBtn').classList.toggle('active', session.hintsShown);
+  // Session-wide, not per-card: toggling flips it for every card from
+  // here on, of whichever type actually has hints (occlusion). If the
+  // CURRENT card happens to be Basic/Cloze, the toggle still flips —
+  // it'll just take visible effect the next time an occlusion card
+  // with a hint comes up, rather than doing nothing.
+  session.hintsEnabled = !session.hintsEnabled;
+  if (c.type === 'occlusion') paintCardContent(c);
+  updateHintsBtnVisibility(c);
+  announce(session.hintsEnabled ? 'Hints on for the rest of this session' : 'Hints off');
 }
 function updateHintsBtnVisibility(c){
   const btn = document.getElementById('hintsBtn');
   const hasHint = c.type === 'occlusion' && c.masks.find(m => m.id === c.activeMaskId && m.hint);
   btn.style.display = c.type === 'occlusion' ? '' : 'none';
   btn.disabled = !hasHint;
-  btn.classList.remove('active');
-  btn.title = hasHint ? 'Show a hint for this occlusion (H)' : 'No hint set for this occlusion';
+  btn.classList.toggle('active', session.hintsEnabled && !!hasHint);
+  btn.title = hasHint ? 'Hints for this session (H)' : 'No hint set for this occlusion';
 }
 
 /* Cement: bookmark the current card AND, on the transition to cemented,

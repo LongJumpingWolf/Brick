@@ -96,7 +96,9 @@ reveals then grades Good, confirm the label tab sits outside the mask
 border, and confirm mixing Cloze/Basic/Occlusion cards into one brick
 across tab switches — nothing finalizes early — and confirm Cement
 Mode filters bricks to only their cemented cards without touching the
-Wall structure. 175 assertions, all currently passing.
+Wall structure, and confirm Hints persist as a session-wide toggle
+across cards rather than resetting per card. 186 assertions, all
+currently passing.
 
 ## Database / environment variables
 
@@ -134,15 +136,20 @@ build that as its own piece of work.
   before the session ends. Pressing `C` again on a card you'd already
   cemented (on a later revisit) un-bookmarks it without forcing a
   second miss — you just stay on the card and can grade normally.
-- **Hints, occlusion cards only.** Each drawn shape can carry an
-  optional hint, separate from its label (the label is the answer,
-  shown only on reveal; the hint is a clue, shown on request while
-  still hidden). Press the Hints button or hit `H` to reveal it,
-  overlaid directly on the occluded region in high-contrast white-on-
-  dark so it stays readable regardless of the hatch pattern underneath.
-  The hint only ever applies to the ONE shape the card is actually
-  testing — in Hide All mode every shape looks hidden identically, but
-  Hints won't leak clues for shapes the card isn't asking about.
+- **Hints, occlusion cards only, session-wide toggle.** Each drawn
+  shape can carry an optional hint, separate from its label (the label
+  is the answer, shown only on reveal; the hint is a clue, shown on
+  request while still hidden). Press the Hints button or hit `H` and it
+  stays ON for the rest of the session — every following occlusion card
+  with a hint shows it automatically, with no need to press `H` again
+  per card. Press `H` again to turn it back off for the rest of the
+  session. Overlaid directly on the occluded region in high-contrast
+  white-on-dark so it stays readable regardless of the hatch pattern
+  underneath. The hint only ever applies to the ONE shape the card is
+  actually testing — in Hide All mode every shape looks hidden
+  identically, but Hints won't leak clues for shapes the card isn't
+  asking about. The toggle resets to off at the start of each new
+  study session — it doesn't carry over between separate sessions.
 - **Space bar** does double duty: reveals the card when it's hidden,
   and grades Good when it's already revealed — one key covers the
   whole rhythm of a review.
