@@ -94,8 +94,9 @@ and create Cloze cards (with correct front/back parsing), confirm an
 Again-graded card requeues within the same session, confirm Space bar
 reveals then grades Good, confirm the label tab sits outside the mask
 border, and confirm mixing Cloze/Basic/Occlusion cards into one brick
-across tab switches — nothing finalizes early. 120+ assertions, all
-currently passing.
+across tab switches — nothing finalizes early — and confirm Cement
+Mode filters bricks to only their cemented cards without touching the
+Wall structure. 175 assertions, all currently passing.
 
 ## Database / environment variables
 
@@ -114,6 +115,14 @@ build that as its own piece of work.
 
 ## Study session behavior
 
+- **Cement Mode.** A view-wide toggle (topbar button or `C` on the
+  Wall screen) — the Wall itself doesn't change at all, every folder
+  and brick is still there and navigable, but tiles show a cemented
+  count instead of the usual new/due breakdown, and starting a brick
+  while Cement Mode is on studies ONLY its cemented cards (regardless
+  of SM-2 due-ness). A brick with zero cemented cards is visually
+  dimmed and shows a "no cemented cards" message rather than silently
+  starting an empty session.
 - **"Again" requeues the card in the same session.** SM-2 marking a
   missed card "due now" only matters for a future session — within
   the one you're actually running, a card graded Again reappears a few

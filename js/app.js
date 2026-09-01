@@ -9,6 +9,20 @@
 
 function escapeHtml(s){ return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+/* ---------- Cement Mode: a view-wide toggle, same shape as it would
+   work in Kardex's own Tough Mode — the Wall stays exactly the same
+   (every folder and brick still there, still navigable), but studying
+   a brick only pulls its cemented cards, and tiles show a cemented
+   count instead of the usual new/due breakdown while it's on. ---------- */
+let cementMode = localStorage.getItem('brickCementMode') === 'true';
+function toggleCementMode(){
+  cementMode = !cementMode;
+  localStorage.setItem('brickCementMode', String(cementMode));
+  document.getElementById('cementModeBtn').classList.toggle('active', cementMode);
+  announce(cementMode ? 'Cement Mode on — bricks now show only cemented cards' : 'Cement Mode off');
+  renderTree();
+}
+
 /* ---------- screens ---------- */
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -86,8 +100,21 @@ function initShortcutsOverlay(){
    own local hotkey listener in occlusion-editor.js) ---------- */
 function initGlobalHotkeys(){
   const searchInput = document.getElementById('searchInput');
+  document.getElementById('cementModeBtn').addEventListener('click', toggleCementMode);
+  document.getElementById('cementModeBtn').classList.toggle('active', cementMode); // reflect a persisted-on state at boot
   document.addEventListener('keydown', (e)=>{
-    const typing = ['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
+    // A field left focused on a DIFFERENT, currently-hidden screen (the
+    // editor's fields, say) stays document.activeElement forever once
+    // this app's screens are just display:none-toggled, not removed
+    // from the DOM. Rather than trust offsetParent for "is this
+    // actually visible" (jsdom has no real layout engine and always
+    // reports it as null, so that check can't be verified by the test
+    // suite at all), this checks the concrete thing that's actually
+    // true here: is the focused field inside the currently ACTIVE
+    // .screen, or some other one you've since navigated away from.
+    const focusedScreen = document.activeElement.closest ? document.activeElement.closest('.screen') : null;
+    const staleFocus = focusedScreen && !focusedScreen.classList.contains('active');
+    const typing = ['INPUT','TEXTAREA'].includes(document.activeElement.tagName) && !staleFocus;
     const anyOverlayOpen = document.querySelector('.overlay.active');
     const menuOpen = typeof isTileMenuOpen === 'function' && isTileMenuOpen();
     const onWallScreen = document.getElementById('screenWall').classList.contains('active');
@@ -102,6 +129,7 @@ function initGlobalHotkeys(){
     else if (e.key === '/' && !typing){ e.preventDefault(); searchInput.focus(); }
     else if ((e.key === 'n' || e.key === 'N') && !typing){ e.preventDefault(); openOcclusionEditor(currentFolderId); }
     else if ((e.key === 'w' || e.key === 'W') && !typing){ e.preventDefault(); document.getElementById('newWallBtn').click(); }
+    else if ((e.key === 'c' || e.key === 'C') && !typing){ e.preventDefault(); toggleCementMode(); } // "C" here = Cement MODE; on the Study screen, "C" cements the current CARD instead — different screens, no collision
   });
 }
 

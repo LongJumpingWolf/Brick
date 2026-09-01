@@ -595,6 +595,97 @@ async function main(){
   assert(/\.mlabel\{[^}]*top:-24px/.test(cssText), 'label is positioned outside the box, above it by default');
   assert(/\.tab-below\{[^}]*bottom:-24px/.test(cssText), 'the flip-below variant positions outside the box on the other side');
 
+  // =========================================================
+  // Cement Mode: view-wide toggle, same Wall/decks, filtered study
+  // =========================================================
+  const cementModeBtn = doc.getElementById('cementModeBtn');
+  assert(!cementModeBtn.classList.contains('active'), 'Cement Mode starts off');
+
+  runInPage(`currentFolderId = '${demoWallNode.id}';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  const seededTileBefore = doc.querySelector('[data-id="' + seededDeckId + '"]');
+  assert(seededTileBefore.querySelector('.tile-meta').textContent.includes('total'), 'before Cement Mode, the seeded brick tile shows the normal new/due/total meta');
+  assert(!seededTileBefore.querySelector('.tile-meta').textContent.includes('cemented'), 'no "cemented" wording shown while Cement Mode is off');
+
+  // cement exactly one card in the seeded brick first, via the real study flow
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  const willCementId = evalInPage('currentCard().id');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'c', bubbles:true }));
+  await sleep(20);
+  // finish out the rest of the (small, requeued) session so we land back on the Wall cleanly
+  while (evalInPage('session') && evalInPage('session.pos < session.order.length')){
+    if (evalInPage('!session.revealed')) studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(10);
+    doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(20);
+  }
+  doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`currentFolderId = '${demoWallNode.id}';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  // toggle Cement Mode ON via the topbar button
+  cementModeBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(cementModeBtn.classList.contains('active'), 'clicking the Cement Mode button activates it');
+  assert(window.localStorage.getItem('brickCementMode') === 'true', 'Cement Mode preference is persisted to localStorage');
+
+  const seededTileAfter = doc.querySelector('[data-id="' + seededDeckId + '"]');
+  assert(seededTileAfter.querySelector('.tile-meta').textContent.includes('1 cemented'), 'tile now shows the cemented count instead of new/due — got "' + seededTileAfter.querySelector('.tile-meta').textContent + '"');
+  assert(seededTileAfter.querySelector('.tile-meta').textContent.includes('3 total'), 'total count is still shown alongside the cemented count');
+  assert(!seededTileAfter.classList.contains('cement-empty'), 'a brick WITH cemented cards is not dimmed');
+
+  const emptyDeckTile = doc.querySelector('[data-id="' + basicDeck.id + '"]');
+  if (emptyDeckTile){
+    assert(emptyDeckTile.classList.contains('cement-empty'), 'a brick with ZERO cemented cards is visually dimmed in Cement Mode');
+    assert(emptyDeckTile.querySelector('.tile-meta').textContent.includes('0 cemented'), 'the zero-cemented brick explicitly shows 0, not blank');
+  }
+
+  // preview screen reflects Cement Mode too
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(doc.getElementById('statDue').textContent === '1', 'preview\'s Due slot shows the cemented count while Cement Mode is on');
+  assert(doc.querySelector('#statDue').parentElement.querySelector('.lbl').textContent === 'Cemented', 'the Due slot\'s LABEL actually changes to "Cemented", not just the number');
+
+  // starting study only pulls the cemented card(s), regardless of due-ness
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(doc.getElementById('screenStudy').classList.contains('active'), 'Cement Mode study session starts fine when a cemented card exists');
+  assert(evalInPage('session.order.length') === 1, 'session contains ONLY the cemented card, not the whole due set (got ' + evalInPage('session.order.length') + ')');
+  assert(evalInPage('session.order[0]') === willCementId, 'the one card in the session is the actual cemented card');
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('screenDone').classList.contains('active'), 'finishing the single cemented card ends the Cement Mode session normally');
+
+  // starting a brick with NO cemented cards shows a toast and does not enter study
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('screenPreview').classList.contains('active'), 'a brick with no cemented cards stays on the preview screen instead of starting a study session');
+  assert(doc.getElementById('statusLive').textContent.includes('No cemented cards'), 'a clear message explains why nothing started — got "' + doc.getElementById('statusLive').textContent + '"');
+  assert(doc.getElementById('startScrollBtn').textContent === 'Start brick', 'the Start button resets back to its normal label rather than getting stuck on "Cancel"');
+
+  // "C" hotkey toggles Cement Mode off again, from the Wall screen
+  doc.getElementById('previewBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'c', bubbles:true }));
+  await sleep(10);
+  assert(!cementModeBtn.classList.contains('active'), '"C" hotkey on the Wall screen toggles Cement Mode back off');
+  assert(window.localStorage.getItem('brickCementMode') === 'false', 'the off-state is persisted too');
+  const seededTileFinal = doc.querySelector('[data-id="' + seededDeckId + '"]');
+  assert(seededTileFinal.querySelector('.tile-meta').textContent.includes('total') && !seededTileFinal.querySelector('.tile-meta').textContent.includes('cemented'), 'tile reverts to the normal new/due/total display once Cement Mode is off');
+
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);
 }

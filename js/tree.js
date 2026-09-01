@@ -95,6 +95,16 @@ function renderTree(){
     const total = n.cards.length;
     const due = n.cards.filter(c => isCardDue(c.id, srsMap)).length;
     const newCount = n.cards.filter(c => !cardHasHistory(c.id, srsMap)).length;
+    const cemented = n.cards.filter(c => c.cemented).length;
+    if (cementMode){
+      const emptyCls = cemented === 0 ? ' cement-empty' : '';
+      return '<button type="button" class="tile brick-tile' + emptyCls + '" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + cemented + ' cemented of ' + total + ' total, brick, draggable">' +
+        brickIcon +
+        '<div class="tile-name">' + escapeHtml(n.name) + '</div>' +
+        '<div class="tile-meta"><span class="cemented-count">' + cemented + ' cemented</span><span>' + total + ' total</span></div>' +
+        '<button type="button" class="tile-kebab" tabindex="-1" aria-label="More options for ' + escapeHtml(n.name) + '">⋮</button>' +
+        '</button>';
+    }
     return '<button type="button" class="tile brick-tile" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + newCount + ' new, ' + due + ' due of ' + total + ' total, brick, draggable">' +
       brickIcon +
       '<div class="tile-name">' + escapeHtml(n.name) + '</div>' +

@@ -53,6 +53,8 @@
 .tile.brick-tile .tile-meta{ color:rgba(255,255,255,.75); }
 .tile.brick-tile .tile-meta .due{ color:#FFE1B0; font-weight:700; }
 .tile.brick-tile .tile-meta .new-count{ color:#D7E6F0; font-weight:700; }
+.tile.brick-tile .tile-meta .cemented-count{ color:#FFE1B0; font-weight:700; }
+.tile.brick-tile.cement-empty{ opacity:.55; }
 .tile-icon{width:20px;height:20px;margin-bottom:9px;}
 .tile-name{font-family:'Fraunces',serif;font-weight:700;font-size:14px;line-height:1.25;margin-bottom:6px;word-break:break-word;}
 .tile-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-soft);display:flex;gap:8px;flex-wrap:wrap;}

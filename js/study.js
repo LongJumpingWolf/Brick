@@ -13,15 +13,24 @@ function openBrickPreview(deckId){
   previewDeckId = deckId;
   const deck = nodeById(deckId);
   if (!deck) return;
-  const srsMap = computeSRS(reviewLog);
   const total = deck.cards.length;
-  const due = deck.cards.filter(c => isCardDue(c.id, srsMap)).length;
-  const isNew = deck.cards.filter(c => !cardHasHistory(c.id, srsMap)).length;
   document.getElementById('previewTitle').textContent = deck.name;
   document.getElementById('previewSub').textContent = total + ' card' + (total===1?'':'s');
-  document.getElementById('statDue').textContent = due;
-  document.getElementById('statNew').textContent = isNew;
   document.getElementById('statTotal').textContent = total;
+  if (cementMode){
+    const cemented = deck.cards.filter(c => c.cemented).length;
+    document.getElementById('statDue').textContent = cemented;
+    document.querySelector('#statDue').parentElement.querySelector('.lbl').textContent = 'Cemented';
+    document.getElementById('statNew').textContent = 0;
+    document.querySelector('#statNew').parentElement.querySelector('.lbl').textContent = 'New';
+  } else {
+    const srsMap = computeSRS(reviewLog);
+    const due = deck.cards.filter(c => isCardDue(c.id, srsMap)).length;
+    const isNew = deck.cards.filter(c => !cardHasHistory(c.id, srsMap)).length;
+    document.getElementById('statDue').textContent = due;
+    document.querySelector('#statDue').parentElement.querySelector('.lbl').textContent = 'Due';
+    document.getElementById('statNew').textContent = isNew;
+  }
   resetLaunch();
   showScreen('screenPreview');
 }
@@ -40,9 +49,15 @@ let session = null; // { deckId, order:[cardId...], pos, revealed, timedOutThisA
 function beginStudy(){
   const deck = nodeById(previewDeckId);
   if (!deck || !deck.cards.length) return;
-  const srsMap = computeSRS(reviewLog);
-  let order = deck.cards.filter(c => isCardDue(c.id, srsMap)).map(c => c.id);
-  if (!order.length) order = deck.cards.map(c => c.id);
+  let order;
+  if (cementMode){
+    order = deck.cards.filter(c => c.cemented).map(c => c.id);
+    if (!order.length){ announce('No cemented cards in this brick yet.'); resetLaunch(); return; }
+  } else {
+    const srsMap = computeSRS(reviewLog);
+    order = deck.cards.filter(c => isCardDue(c.id, srsMap)).map(c => c.id);
+    if (!order.length) order = deck.cards.map(c => c.id);
+  }
   session = { deckId: deck.id, order, pos:0, revealed:false, timedOutThisAttempt:false, remaining:0, running:false, tickId:null, correct:0, missed:0 };
   showScreen('screenStudy');
   renderStudyCard();
