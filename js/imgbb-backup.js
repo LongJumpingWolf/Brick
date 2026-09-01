@@ -131,6 +131,7 @@ function finishImgbbUploadModal(done, failed, total){
   document.getElementById('imgbbUploadBarFill').style.width = '100%';
   document.getElementById('imgbbUploadStatus').textContent =
     failed ? (done + ' of ' + total + ' backed up — ' + failed + ' failed and can be retried later.') : ('All ' + total + ' images backed up.');
+  document.getElementById('imgbbUploadCount').textContent = done + ' / ' + total;
   document.getElementById('imgbbUploadDoneRow').style.display = '';
   announce(failed ? (done + ' of ' + total + ' images backed up to ImgBB, ' + failed + ' failed') : ('All ' + total + ' images backed up to ImgBB'));
 }

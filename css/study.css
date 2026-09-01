@@ -103,6 +103,28 @@
 .grade-row .brick-btn{flex:1;padding:14px;font-size:14px;}
 
 .done-wrap{text-align:center;padding:50px 20px;}
+
+/* ---------- animated brick wall, loops while the Done screen is up ---------- */
+.done-wall{display:flex;flex-direction:column;align-items:center;gap:3px;margin-bottom:16px;}
+.done-brick-row{display:flex;gap:3px;}
+.done-brick-row.offset{margin-left:-19.5px;}
+.done-brick{
+  width:36px;height:20px;border-radius:2px;
+  background:var(--clay); box-shadow:inset 0 0 0 1px var(--clay-dark);
+  opacity:0; transform:translateY(-16px) scale(.85);
+  transition:opacity .3s ease, transform .35s cubic-bezier(.34,1.56,.64,1);
+}
+.done-brick.half{width:16.5px;}
+.done-brick:nth-child(even){background:var(--clay-light);}
+.done-brick.laid{opacity:1; transform:translateY(0) scale(1);}
+
+.done-bricked-text{
+  font-family:'Fraunces',serif; font-weight:900; font-size:20px; color:var(--clay-dark);
+  opacity:0; transform:scale(.85); margin-bottom:14px;
+  transition:opacity .35s ease, transform .35s cubic-bezier(.34,1.56,.64,1);
+}
+.done-bricked-text.show{opacity:1; transform:scale(1);}
+
 .done-stamp{display:inline-block;font-family:'Fraunces',serif;font-weight:900;font-size:22px;color:var(--clay-dark);
   border:3px solid var(--clay-dark); border-radius:6px; padding:10px 22px; transform:rotate(-2deg);
   margin-bottom:18px; letter-spacing:.02em;

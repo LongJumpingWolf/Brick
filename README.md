@@ -5,7 +5,11 @@ Image-occlusion cramming app, plus Basic and Cloze card types. Local-only
 plain static site.
 
 Wall/Brick file manager (borrowed from Kardex's folder/deck tree shape)
-plus a card editor with three tabs:
+plus a card editor with three tabs. Walls (folders) render with an
+actual brick-pattern texture and Bricks (decks) get a visible physical
+border — a Wall is meant to look like it's built from many bricks, a
+Brick like one distinct object, so which is which is obvious without
+reading the label. The page itself disables pinch/double-tap zoom.
 
 - **Image Occlusion** — modeled on Anki's actual editor: Select /
   Rectangle / Ellipse tools, drag to draw, drag a shape's body to move
@@ -129,8 +133,15 @@ close, phone locking), run the full ImgBB batch backup end to end with
 a mocked network (real batching, a deliberately-failing image that
 gets retried then correctly reported, no re-nagging on a simple
 re-save), and confirm a second touch mid-draw cancels the gesture and
-hands off to a manually-computed scroll rather than fighting it.
-293 assertions, all currently passing.
+hands off to a manually-computed scroll rather than fighting it,
+confirm zoom is disabled, confirm Wall/Brick tiles render with their
+distinct textures, confirm the Done screen's brick wall actually lays
+bricks in sequence, shows its text only after finishing, loops, and
+clears its timers on exit, and confirm the ImgBB progress counter
+shows the real final result rather than a stale mid-upload snapshot (a
+real bug caught from an actual screenshot: it said "All 1 images
+backed up" right next to a contradictory "0 / 1"). 317 assertions, all
+currently passing.
 
 This process has caught real bugs more than once, including one this
 session: tiles were rendered as `<button class="tile">` with a nested
@@ -165,20 +176,28 @@ uses. Say the word and I'll build that as its own piece of work.
   they float above the content, accounting for notched-phone safe
   areas at the bottom.
 
-- **Cement Mode.** A view-wide toggle (topbar button or `C` on the
-  Wall screen) — the Wall itself doesn't change at all, every folder
-  and brick is still there and navigable, but tiles show a cemented
-  count instead of the usual new/due breakdown, and starting a brick
-  while Cement Mode is on studies ONLY its cemented cards (regardless
-  of SM-2 due-ness). A brick with zero cemented cards is visually
-  dimmed and shows a "no cemented cards" message rather than silently
-  starting an empty session. Turning it on also applies a real theme —
-  cools the whole background and re-colors Brick tiles toward the same
-  concrete greys as the cinder-block icon itself, so it's unmistakable
-  at a glance that you're in the filtered view. The topbar toggle is
-  Wall-screen-only; showing it next to the Study screen's own per-card
-  Cement button (same icon, different meaning) read as two confusing
-  near-duplicate rows.
+- **Cement Mode.** Toggled via the logo dropdown in the topbar (click
+  "BRICK." to open it) or `C` on the Wall screen — the Wall itself
+  doesn't change at all, every folder and brick is still there and
+  navigable, but tiles show a cemented count instead of the usual
+  new/due breakdown, and starting a brick while Cement Mode is on
+  studies ONLY its cemented cards (regardless of SM-2 due-ness). A
+  brick with zero cemented cards is visually dimmed and shows a "no
+  cemented cards" message rather than silently starting an empty
+  session. Turning it on also applies a real theme — cools the whole
+  background, re-colors Brick tiles toward the same concrete greys as
+  the cinder-block icon itself, and swaps the topbar logo and wordmark
+  from "BRICK." to "CEMENT." — unmistakable at a glance that you're in
+  the filtered view. The dropdown only opens on the Wall screen;
+  offering it next to the Study screen's own per-card Cement button
+  (same icon, different meaning) read as two confusing near-duplicate
+  rows.
+- **Done screen: an animated brick wall.** A 3-row running-bond wall
+  lays itself in brick by brick, "You are bricked!" fades in once it's
+  fully built, holds a beat, then resets and loops — for as long as
+  you're actually looking at the Done screen. Leaving it (either
+  button) explicitly clears every pending timer so the loop doesn't
+  keep firing invisibly in the background afterward.
 - **Paused sessions survive closing the app, on purpose or by accident.**
   Every card transition snapshots a resumable checkpoint (deck, card
   order, position, score, hints state) to localStorage. Hitting Back

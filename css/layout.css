@@ -14,6 +14,42 @@
 .logo-text .k{color:var(--clay);}
 .topbar-spacer{flex:1;}
 
+/* ---------- logo profile switcher (Brick / Cement) ---------- */
+.logo-switcher-wrap{position:relative;}
+.logo-switcher-btn{
+  display:flex; align-items:center; gap:10px;
+  background:none; border:none; padding:6px 8px 6px 4px; margin:-6px -8px -6px -4px;
+  border-radius:8px; cursor:pointer; transition:background .15s ease;
+}
+.logo-switcher-btn:hover{background:rgba(43,36,32,.05);}
+.logo-chevron{color:var(--ink-soft); transition:transform .18s ease; flex-shrink:0;}
+.logo-switcher-btn[aria-expanded="true"] .logo-chevron{transform:rotate(180deg);}
+/* Switching is a Wall-browsing concept — the chevron fades away on
+   other screens as a visual cue the dropdown isn't open-able there,
+   without hiding the logo itself (still shown everywhere as branding). */
+body:not(.on-wall-screen) .logo-chevron{opacity:.25;}
+body:not(.on-wall-screen) .logo-switcher-btn{cursor:default;}
+body:not(.on-wall-screen) .logo-switcher-btn:hover{background:none;}
+
+.logo-dropdown{
+  position:absolute; top:calc(100% + 8px); left:0; z-index:60;
+  background:var(--paper); border-radius:10px;
+  box-shadow:inset 0 0 0 1.5px var(--mortar-dark), var(--shadow-lg);
+  padding:6px; min-width:160px;
+  opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none;
+  transition:opacity .16s ease, transform .16s ease;
+}
+.logo-dropdown.open{opacity:1; transform:translateY(0) scale(1); pointer-events:auto;}
+.logo-option{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background:none; border:none; border-radius:7px; padding:9px 10px;
+  font-family:'Fraunces',serif; font-weight:700; font-size:14px; color:var(--ink);
+  cursor:pointer; text-align:left; transition:background .12s ease;
+}
+.logo-option:hover{background:var(--mortar);}
+.logo-option.active{background:var(--wash); box-shadow:inset 0 0 0 1.5px var(--mortar-dark);}
+.logo-option svg{width:22px;height:22px;flex-shrink:0;}
+
 .crumbs{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);margin-bottom:18px;}
 .crumb{cursor:pointer;padding:3px 6px;border-radius:4px;background:none;border:none;color:inherit;}
 .crumb:hover{background:rgba(181,75,54,.1);color:var(--clay-dark);}
@@ -53,9 +89,34 @@
   mix-blend-mode:overlay; opacity:.35; pointer-events:none;
 }
 .tile:hover{ transform:translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -3px 0 rgba(0,0,0,.14), var(--shadow-lg); }
-.tile.wall{ background-color:var(--mortar); }
+.tile.wall{
+  background-color:var(--mortar);
+  /* A literal running-bond brick pattern, not just a flat tan panel —
+     the whole point is that a Wall is made of many bricks, and nothing
+     about a solid color communicated that. Same color family as the
+     mortar/mortar-dark tokens, so it stays subtle enough not to fight
+     the tile's own text/icon, but it's now unmistakably "a wall"
+     rather than reading as a blank card. */
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Crect width='40' height='20' fill='%23DCD2C2'/%3E%3Crect x='0' y='0' width='19' height='9' fill='%23C7BAA3'/%3E%3Crect x='20' y='0' width='19' height='9' fill='%23C7BAA3'/%3E%3Crect x='-10' y='10' width='19' height='9' fill='%23C7BAA3'/%3E%3Crect x='10' y='10' width='19' height='9' fill='%23C7BAA3'/%3E%3Crect x='30' y='10' width='19' height='9' fill='%23C7BAA3'/%3E%3C/svg%3E");
+  background-repeat:repeat;
+}
 .tile.wall .tile-icon{ color:var(--ink-soft); }
-.tile.brick-tile{ background-color:var(--clay); color:#fff; }
+.tile.brick-tile{
+  background-color:var(--clay); color:#fff;
+  /* A single brick reads as ONE solid object, not a flat color swatch
+     — a visible mortar-toned inset border gives it a distinct physical
+     edge, the way an actual brick has a defined boundary rather than
+     just being "a red rectangle" that could be mistaken for a bigger
+     mass of something (which is what was reading as wall-like before). */
+  box-shadow:
+    inset 0 0 0 2px rgba(92,33,29,.35),
+    inset 0 1px 0 rgba(255,255,255,.2), inset 0 -3px 0 rgba(0,0,0,.14), var(--shadow);
+}
+.tile.brick-tile:hover{
+  box-shadow:
+    inset 0 0 0 2px rgba(92,33,29,.35),
+    inset 0 1px 0 rgba(255,255,255,.2), inset 0 -3px 0 rgba(0,0,0,.14), var(--shadow-lg);
+}
 .tile.brick-tile .tile-icon{ color:rgba(255,255,255,.85); }
 .tile.brick-tile .tile-meta{ color:rgba(255,255,255,.75); }
 .tile.brick-tile .tile-meta .due{ color:#FFE1B0; font-weight:700; }

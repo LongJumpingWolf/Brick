@@ -664,8 +664,16 @@ async function main(){
   // =========================================================
   // Cement Mode: view-wide toggle, same Wall/decks, filtered study
   // =========================================================
-  const cementModeBtn = doc.getElementById('cementModeBtn');
-  assert(!cementModeBtn.classList.contains('active'), 'Cement Mode starts off');
+  const logoSwitcherBtn = doc.getElementById('logoSwitcherBtn');
+  const logoDropdown = doc.getElementById('logoDropdown');
+  const logoOptionCement = doc.getElementById('logoOptionCement');
+  const logoOptionBrick = doc.getElementById('logoOptionBrick');
+  function selectLogoProfile(profile){
+    logoSwitcherBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+    (profile === 'cement' ? logoOptionCement : logoOptionBrick).dispatchEvent(new window.Event('click', { bubbles:true }));
+  }
+  assert(!doc.body.classList.contains('cement-mode-active'), 'Cement Mode starts off');
+  assert(doc.getElementById('activeLogoText').textContent.includes('BRICK'), 'the topbar logo shows Brick by default');
 
   runInPage(`currentFolderId = '${demoWallNode.id}';`);
   runInPage('renderTree();');
@@ -696,10 +704,12 @@ async function main(){
   runInPage('renderTree();');
   await sleep(10);
 
-  // toggle Cement Mode ON via the topbar button
-  cementModeBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  // toggle Cement Mode ON via the logo switcher dropdown
+  selectLogoProfile('cement');
   await sleep(10);
-  assert(cementModeBtn.classList.contains('active'), 'clicking the Cement Mode button activates it');
+  assert(doc.body.classList.contains('cement-mode-active'), 'selecting Cement from the logo dropdown activates it');
+  assert(doc.getElementById('activeLogoText').textContent.includes('CEMENT'), 'the topbar logo swaps to show Cement');
+  assert(logoOptionCement.classList.contains('active') && !logoOptionBrick.classList.contains('active'), 'the dropdown reflects Cement as the active option');
   assert(window.localStorage.getItem('brickCementMode') === 'true', 'Cement Mode preference is persisted to localStorage');
 
   const seededTileAfter = doc.querySelector('[data-id="' + seededDeckId + '"]');
@@ -747,7 +757,8 @@ async function main(){
   await sleep(10);
   doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'c', bubbles:true }));
   await sleep(10);
-  assert(!cementModeBtn.classList.contains('active'), '"C" hotkey on the Wall screen toggles Cement Mode back off');
+  assert(!doc.body.classList.contains('cement-mode-active'), '"C" hotkey on the Wall screen toggles Cement Mode back off');
+  assert(doc.getElementById('activeLogoText').textContent.includes('BRICK'), 'the logo swaps back to Brick too, staying in sync with the hotkey (not just the dropdown click path)');
   assert(window.localStorage.getItem('brickCementMode') === 'false', 'the off-state is persisted too');
   const seededTileFinal = doc.querySelector('[data-id="' + seededDeckId + '"]');
   assert(seededTileFinal.querySelector('.tile-meta').textContent.includes('total') && !seededTileFinal.querySelector('.tile-meta').textContent.includes('cemented'), 'tile reverts to the normal new/due/total display once Cement Mode is off');
@@ -930,7 +941,7 @@ async function main(){
   assert(!doc.body.classList.contains('cement-mode-active'), 'starts without the Cement Mode theme applied');
   assert(doc.body.classList.contains('on-wall-screen'), 'explicitly navigating to the Wall screen sets on-wall-screen correctly');
 
-  doc.getElementById('cementModeBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  selectLogoProfile('cement');
   await sleep(10);
   assert(doc.body.classList.contains('cement-mode-active'), 'toggling Cement Mode on applies the theme class to <body> — a real visual shift, not just the button');
   const tokensCss = fs.readFileSync(path.join(ROOT, 'css/tokens.css'), 'utf-8');
@@ -938,19 +949,25 @@ async function main(){
   assert(/body\.cement-mode-active \.tile\.brick-tile\{ background-color:var\(--cement-dark\)/.test(tokensCss), 'brick tiles specifically re-color toward the cement palette while the mode is on');
 
   // topbar decluttering: navigate to a non-Wall screen and confirm the
-  // rule exists to hide the (now redundant, confusing-looking) Cement
-  // Mode button there — CSS-driven, so verified via the stylesheet text
-  // plus the JS-driven body class it depends on actually toggling correctly
-  assert(/body:not\(\.on-wall-screen\) #cementModeBtn\{ display:none/.test(tokensCss), 'a rule exists to hide the topbar Cement Mode toggle outside the Wall screen');
+  // logo dropdown becomes non-openable there (CSS fades the chevron,
+  // JS refuses to open it) — the profile switch is a Wall-browsing
+  // concept, and showing it next to the Study screen's own per-card
+  // Cement button would reintroduce the exact confusing-duplicate-row
+  // problem that was fixed earlier.
+  const layoutCssForChevron = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf-8');
+  assert(/body:not\(\.on-wall-screen\) \.logo-switcher-btn\{cursor:default/.test(layoutCssForChevron), 'a rule exists making the logo switcher non-interactive-looking outside the Wall screen');
   runInPage(`openBrickPreview('${seededDeckId}');`);
   await sleep(10);
   assert(!doc.body.classList.contains('on-wall-screen'), 'leaving the Wall screen clears on-wall-screen, so the CSS rule actually applies');
+  logoSwitcherBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!logoDropdown.classList.contains('open'), 'clicking the logo switcher while NOT on the Wall screen does not open the dropdown — the click is a no-op there');
   doc.getElementById('previewBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
   assert(doc.body.classList.contains('on-wall-screen'), 'returning to the Wall screen restores on-wall-screen');
 
   // turn Cement Mode back off, leaves things clean for the tests below
-  doc.getElementById('cementModeBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  selectLogoProfile('brick');
   await sleep(10);
   assert(!doc.body.classList.contains('cement-mode-active'), 'toggling Cement Mode off removes the theme class again');
 
@@ -1176,6 +1193,7 @@ async function main(){
   }
   assert(doc.getElementById('imgbbUploadDoneRow').style.display !== 'none', 'the batch upload actually finishes and reveals the Done button — did not hang (waited ' + waited + 'ms)');
   assert(doc.getElementById('imgbbUploadStatus').textContent.includes('failed'), 'final status correctly reports the one image that failed every attempt — got "' + doc.getElementById('imgbbUploadStatus').textContent + '"');
+  assert(doc.getElementById('imgbbUploadCount').textContent === '7 / 8', 'the count display updates to the FINAL result at completion, not a stale mid-upload snapshot — got "' + doc.getElementById('imgbbUploadCount').textContent + '"');
 
   const finalMap = JSON.parse(window.localStorage.getItem('brickImageUrlMap_v1'));
   const successCount = Object.keys(finalMap).filter(h => h.startsWith('batch-test-img-')).length;
@@ -1222,6 +1240,45 @@ async function main(){
     await sleep(50);
     waited += 50;
   }
+  doc.getElementById('imgbbUploadDoneBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // Regression test for the exact bug reported from a real screenshot:
+  // a single pending image, upload succeeds, but the counter stayed
+  // frozen at "0 / 1" (its value from the moment upload STARTED) next
+  // to a status text claiming "All 1 images backed up" — a genuinely
+  // confusing contradiction. Isolate to exactly one fresh image so the
+  // stale-vs-final values can't coincidentally match by arithmetic luck.
+  runInPage(`
+    window.fetch = async () => ({ ok:true, status:200, headers:{ get:()=>null }, json: async () => ({ success:true, data:{ url:'https://fake.imgbb.example/single' } }) });
+    (async () => {
+      const db = await openImageDb();
+      const tx = db.transaction(IMG_STORE, 'readwrite');
+      const store = tx.objectStore(IMG_STORE);
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#123"/></svg>';
+      const dataUrl = 'data:image/svg+xml;base64,' + btoa(svg);
+      await idbPut(store, { hash:'single-pending-img', mimeType:'image/svg+xml', dataUrl, w:10, h:10 });
+      imageCache.set('single-pending-img', { dataUrl, w:10, h:10 });
+      tree.children.push({ id: uid(), type:'deck', name:'Single Image Test Brick', createdAt: Date.now(),
+        cards: [{ id: uid(), type:'occlusion', imgHash:'single-pending-img', imgW:10, imgH:10, masks:[], activeMaskId:null, mode:'hide-all', header:'', backExtra:'', timeouts:0, tough:false, createdAt: Date.now() }] });
+      saveTreeNow();
+      window.__singleImgReady = true;
+    })();
+  `);
+  await sleep(50);
+  assert(evalInPage('window.__singleImgReady') === true, 'single fresh pending image seeded for the regression test');
+  runInPage('renderImgbbSection();'); // Settings screen needs to know about the freshly-seeded pending image before the Retry button's visibility reflects it
+  await sleep(10);
+  doc.getElementById('retryImgbbBackupBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  waited = 0;
+  while (doc.getElementById('imgbbUploadDoneRow').style.display === 'none' && waited < 3000){
+    await sleep(50);
+    waited += 50;
+  }
+  assert(doc.getElementById('imgbbUploadStatus').textContent.startsWith('All ') && doc.getElementById('imgbbUploadStatus').textContent.endsWith('images backed up.'), 'status text reports full success, same wording shape as the real screenshot — got "' + doc.getElementById('imgbbUploadStatus').textContent + '"');
+  const finalTotal = doc.getElementById('imgbbUploadTotal').textContent;
+  assert(doc.getElementById('imgbbUploadCount').textContent === finalTotal + ' / ' + finalTotal, 'count matches the FINAL total on both sides, not the stale "0 / N" the screenshot showed — got "' + doc.getElementById('imgbbUploadCount').textContent + '" for a run of ' + finalTotal);
   doc.getElementById('imgbbUploadDoneBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
 
@@ -1297,6 +1354,65 @@ async function main(){
   editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:120, clientY:90, pointerId:30 }));
   await sleep(10);
   assert(evalInPage('editorShapes.length') === shapesBeforeFreshDraw + 1, 'a normal single-finger draw after the interrupted gesture works correctly — the editor recovered cleanly');
+
+  // =========================================================
+  // Zoom disabled
+  // =========================================================
+  const viewportMeta = doc.querySelector('meta[name="viewport"]');
+  assert(viewportMeta.content.includes('user-scalable=no'), 'viewport meta disables pinch/double-tap zoom');
+  assert(viewportMeta.content.includes('maximum-scale=1.0'), 'viewport meta pins the max scale to 1');
+  assert(/body\{[^}]*touch-action:pan-x pan-y/.test(tokensCss), 'a CSS-level backstop also restricts touch-action, since some browsers (iOS Safari) don\'t fully honor user-scalable=no on its own');
+
+  // =========================================================
+  // Wall vs. Brick tile visual distinction
+  // =========================================================
+  const finalLayoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf-8');
+  assert(/\.tile\.wall\{[^}]*background-image:url\("data:image\/svg\+xml/.test(finalLayoutCss), 'Wall tiles now render an actual brick-pattern texture, not a flat color panel — the whole point of a Wall is that it\'s made of many bricks');
+  assert(/\.tile\.brick-tile\{[^}]*box-shadow:\s*\n\s*inset 0 0 0 2px/.test(finalLayoutCss), 'Brick (deck) tiles get a visible inset border, reading as one distinct physical object rather than a flat color swatch');
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  const wallTileCheck = doc.querySelector('.tile.wall');
+  const brickTileCheck = doc.querySelector('.tile.brick-tile');
+  assert(!!wallTileCheck, 'a wall tile is actually rendered with the .wall class the new CSS rule targets');
+  assert(!!brickTileCheck, 'a brick tile is actually rendered with the .brick-tile class the new CSS rule targets');
+
+  // =========================================================
+  // Done screen: animated brick wall + "You are bricked!"
+  // =========================================================
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  while (evalInPage('session.pos < session.order.length')){
+    if (evalInPage('!session.revealed')) studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(10);
+    doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(20);
+  }
+  assert(doc.getElementById('screenDone').classList.contains('active'), 'finishing a session reaches the Done screen');
+  const doneBricks = doc.querySelectorAll('#doneWall .done-brick');
+  assert(doneBricks.length === 13, 'the wall renders its full 3-row running-bond brick set (4 + 5-with-halves + 4 = 13) — got ' + doneBricks.length);
+  assert(Array.from(doneBricks).every(b => !b.classList.contains('laid')), 'bricks start un-laid at the very beginning of a fresh cycle');
+
+  // let the staggered lay-in sequence play out
+  await sleep(150 + doneBricks.length * 110 + 50);
+  assert(Array.from(doneBricks).every(b => b.classList.contains('laid')), 'every brick is laid after the sequence completes — the wall actually finishes building, not just the first few');
+  await sleep(300);
+  assert(doc.getElementById('doneBrickedText').classList.contains('show'), '"You are bricked!" appears only after the wall is fully built, not immediately');
+
+  // it loops: after holding, the cycle resets and rebuilds
+  await sleep(3200);
+  const midResetBricks = Array.from(doneBricks).filter(b => b.classList.contains('laid')).length;
+  assert(midResetBricks < doneBricks.length, 'the wall actually resets and starts rebuilding again — this loops rather than running once');
+
+  // leaving the Done screen stops the loop — no orphaned timers running forever in the background
+  const timersBeforeLeaving = evalInPage('doneWallTimers.length');
+  assert(timersBeforeLeaving > 0, 'the loop has real pending timers scheduled while the Done screen is showing');
+  doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('doneWallTimers.length') === 0, 'navigating away from the Done screen clears every pending timer — the animation does not keep running invisibly forever');
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);

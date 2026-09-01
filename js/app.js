@@ -9,6 +9,52 @@
 
 function escapeHtml(s){ return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+/* ---------- logo profile switcher: Brick / Cement ---------- */
+const BRICK_LOGO_SVG = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
+  '<rect x="2" y="6" width="13" height="8" rx="1.5" fill="#B54B36" stroke="#8B3526" stroke-width="1"/>' +
+  '<rect x="17" y="6" width="13" height="8" rx="1.5" fill="#D0664E" stroke="#8B3526" stroke-width="1"/>' +
+  '<rect x="9" y="16" width="13" height="8" rx="1.5" fill="#8B3526" stroke="#5c211d" stroke-width="1"/>' +
+  '<rect x="2" y="16" width="5" height="8" rx="1.5" fill="#B54B36" stroke="#5c211d" stroke-width="1"/>' +
+  '<rect x="24" y="16" width="6" height="8" rx="1.5" fill="#B54B36" stroke="#5c211d" stroke-width="1"/></svg>';
+const CEMENT_LOGO_SVG = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
+  '<rect x="3" y="4" width="26" height="11" rx="1.5" fill="#A8ACA6" stroke="#6E7268" stroke-width="1"/>' +
+  '<rect x="3" y="17" width="26" height="11" rx="1.5" fill="#8F938A" stroke="#6E7268" stroke-width="1"/>' +
+  '<rect x="7" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>' +
+  '<rect x="19" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>' +
+  '<rect x="7" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/>' +
+  '<rect x="19" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/></svg>';
+
+function initLogoSwitcher(){
+  const btn = document.getElementById('logoSwitcherBtn');
+  const dropdown = document.getElementById('logoDropdown');
+  function closeDropdown(){ dropdown.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+  function openDropdown(){ dropdown.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    // Switching profiles is a Wall-browsing concept, same reasoning as
+    // why the old standalone Cement Mode button was Wall-screen-only —
+    // toggling it mid-study-session would reintroduce the exact
+    // "two things called Cement in different rows" confusion that was
+    // fixed earlier. The logo itself still always shows the current
+    // profile everywhere; only the ability to CHANGE it is gated.
+    if (!document.body.classList.contains('on-wall-screen')) return;
+    if (dropdown.classList.contains('open')) closeDropdown(); else openDropdown();
+  });
+  document.addEventListener('click', (e)=>{
+    if (dropdown.classList.contains('open') && !dropdown.contains(e.target) && !btn.contains(e.target)) closeDropdown();
+  });
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && dropdown.classList.contains('open')) closeDropdown();
+  });
+  dropdown.querySelectorAll('.logo-option').forEach(opt=>{
+    opt.addEventListener('click', ()=>{
+      const wantsCement = opt.dataset.profile === 'cement';
+      if (wantsCement !== cementMode) toggleCementMode();
+      closeDropdown();
+    });
+  });
+}
+
 /* ---------- Cement Mode: a view-wide toggle, same shape as it would
    work in Kardex's own Tough Mode — the Wall stays exactly the same
    (every folder and brick still there, still navigable), but studying
@@ -16,11 +62,19 @@ function escapeHtml(s){ return (s == null ? '' : String(s)).replace(/&/g,'&amp;'
    count instead of the usual new/due breakdown while it's on. A real
    theme shift (cooler background, grey brick tiles) makes it obvious
    at a glance that the mode is on, not just a small button tint you
-   can miss and then get confused by the filtered counts. ---------- */
+   can miss and then get confused by the filtered counts. The topbar
+   logo itself doubles as the switcher — no separate button needed. ---------- */
 let cementMode = localStorage.getItem('brickCementMode') === 'true';
 function applyCementModeTheme(){
   document.body.classList.toggle('cement-mode-active', cementMode);
-  document.getElementById('cementModeBtn').classList.toggle('active', cementMode);
+  const mark = document.getElementById('activeLogoMark');
+  const text = document.getElementById('activeLogoText');
+  if (mark) mark.innerHTML = cementMode ? CEMENT_LOGO_SVG : BRICK_LOGO_SVG;
+  if (text) text.innerHTML = cementMode ? 'CEMENT<span class="k">.</span>' : 'BRICK<span class="k">.</span>';
+  const optBrick = document.getElementById('logoOptionBrick');
+  const optCement = document.getElementById('logoOptionCement');
+  if (optBrick) optBrick.classList.toggle('active', !cementMode);
+  if (optCement) optCement.classList.toggle('active', cementMode);
 }
 function toggleCementMode(){
   cementMode = !cementMode;
@@ -114,8 +168,7 @@ function initShortcutsOverlay(){
    own local hotkey listener in occlusion-editor.js) ---------- */
 function initGlobalHotkeys(){
   const searchInput = document.getElementById('searchInput');
-  document.getElementById('cementModeBtn').addEventListener('click', toggleCementMode);
-  applyCementModeTheme(); // reflect a persisted-on state (theme + button) at boot, not just the button
+  applyCementModeTheme(); // reflect a persisted-on state (theme + logo display) at boot, not just an isolated button
   document.addEventListener('keydown', (e)=>{
     // A field left focused on a DIFFERENT, currently-hidden screen (the
     // editor's fields, say) stays document.activeElement forever once
@@ -162,6 +215,7 @@ async function boot(){
   initSettingsScreen();
   initImgbbBackup();
   initShortcutsOverlay();
+  initLogoSwitcher();
   initGlobalHotkeys();
 }
 boot();

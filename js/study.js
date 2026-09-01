@@ -368,6 +368,35 @@ function finishStudy(){
   document.getElementById('doneSummary').textContent =
     session.correct + ' good · ' + session.missed + ' to review again · ' + session.order.length + ' cards';
   showScreen('screenDone');
+  runDoneWallLoop();
+}
+
+/* ---------- animated brick wall on the Done screen ----------
+   Bricks lay in one at a time (bottom row, then the offset middle
+   row, then the top row — real running-bond order), "You are
+   bricked!" appears once the wall is fully built, everything holds a
+   beat, then fades and the cycle repeats for as long as the Done
+   screen is showing. Timers are tracked and explicitly cleared on the
+   way out (Back to wall / Lay it again) — a setTimeout-driven loop
+   left running after navigating away would just keep firing forever
+   in the background for no visible reason, wasting cycles. */
+let doneWallTimers = [];
+function clearDoneWallTimers(){ doneWallTimers.forEach(t => clearTimeout(t)); doneWallTimers = []; }
+function runDoneWallLoop(){
+  clearDoneWallTimers();
+  const bricks = Array.from(document.querySelectorAll('#doneWall .done-brick'));
+  const text = document.getElementById('doneBrickedText');
+  function cycle(){
+    bricks.forEach(b => b.classList.remove('laid'));
+    text.classList.remove('show');
+    bricks.forEach((b, i) => {
+      doneWallTimers.push(setTimeout(() => b.classList.add('laid'), 150 + i * 110));
+    });
+    const allLaidAt = 150 + bricks.length * 110;
+    doneWallTimers.push(setTimeout(() => text.classList.add('show'), allLaidAt + 250));
+    doneWallTimers.push(setTimeout(cycle, allLaidAt + 3200)); // hold built + text, then restart the loop
+  }
+  cycle();
 }
 
 function initStudyScreens(){
@@ -406,8 +435,8 @@ function initStudyScreens(){
   document.getElementById('resumeSessionBtn').addEventListener('click', resumeSession);
   document.getElementById('discardSessionBtn').addEventListener('click', discardPendingSession);
 
-  document.getElementById('restartScrollBtn').addEventListener('click', beginStudy);
-  document.getElementById('doneBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
+  document.getElementById('restartScrollBtn').addEventListener('click', ()=>{ clearDoneWallTimers(); beginStudy(); });
+  document.getElementById('doneBackBtn').addEventListener('click', ()=>{ clearDoneWallTimers(); showScreen('screenWall'); renderTree(); });
 
   // Space: reveal when hidden, grade Good when already revealed.
   // C: toggle Cement (bookmark + auto-Again). H: toggle Hints (occlusion only).
