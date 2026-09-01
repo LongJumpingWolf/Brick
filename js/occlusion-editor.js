@@ -138,14 +138,23 @@ function renderShapeList(){
   list.innerHTML = editorShapes.map((s,i)=>
     '<div class="io-shape-row' + (s.id===selectedShapeId?' selected':'') + '" data-id="' + s.id + '">' +
     '<span class="snum-badge' + (s.shape==='ellipse'?' ellipse':'') + '">' + (i+1) + '</span>' +
-    '<input type="text" value="' + escapeHtml(s.label) + '" data-id="' + s.id + '" placeholder="Label…">' +
+    '<div class="io-shape-row-fields">' +
+      '<input type="text" class="label-input" value="' + escapeHtml(s.label) + '" data-id="' + s.id + '" placeholder="Label (shown on reveal)…">' +
+      '<input type="text" class="hint-input" value="' + escapeHtml(s.hint || '') + '" data-id="' + s.id + '" placeholder="Hint (optional, shown on request while hidden)…">' +
+    '</div>' +
     '<button type="button" class="del-shape" data-id="' + s.id + '" title="Delete">✕</button>' +
     '</div>'
   ).join('');
-  list.querySelectorAll('input').forEach(inp=>{
+  list.querySelectorAll('.label-input').forEach(inp=>{
     inp.addEventListener('input', ()=>{
       const s = editorShapes.find(x => x.id === inp.dataset.id);
       if (s) s.label = inp.value;
+    });
+  });
+  list.querySelectorAll('.hint-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const s = editorShapes.find(x => x.id === inp.dataset.id);
+      if (s) s.hint = inp.value;
     });
   });
   list.querySelectorAll('.del-shape').forEach(btn=>{
@@ -243,15 +252,24 @@ function initOcclusionEditor(){
   });
 
   stage.addEventListener('pointerup', ()=>{
+    let justDrewShapeId = null;
     if (dragState === 'drawing' && drawingPreview){
       if (drawingPreview.w >= 2 && drawingPreview.h >= 2){
-        const newShape = { id: uid(), shape: editorTool, x:drawingPreview.x, y:drawingPreview.y, w:drawingPreview.w, h:drawingPreview.h, label: 'Region ' + (editorShapes.length+1) };
+        const newShape = { id: uid(), shape: editorTool, x:drawingPreview.x, y:drawingPreview.y, w:drawingPreview.w, h:drawingPreview.h, label: 'Region ' + (editorShapes.length+1), hint: '' };
         editorShapes.push(newShape);
+        justDrewShapeId = newShape.id;
       }
       drawingPreview = null;
     }
     dragState = null; dragHandle = null; dragStartPct = null; dragOrigShape = null;
     renderEditorShapes();
+    if (justDrewShapeId){
+      // The PowerPoint-style "just drew a text box, cursor's ready to
+      // type" feel — jump straight into the hint field for the shape
+      // you just finished drawing instead of leaving focus nowhere.
+      const hintInput = document.querySelector('.hint-input[data-id="' + justDrewShapeId + '"]');
+      if (hintInput) hintInput.focus();
+    }
   });
   stage.addEventListener('pointercancel', ()=>{ dragState = null; drawingPreview = null; renderEditorShapes(); });
 

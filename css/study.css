@@ -1,5 +1,9 @@
 .study-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);}
 .study-title{flex:1;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.study-tool-btn{width:32px;height:32px;flex-shrink:0;}
+.study-tool-btn.active{background:var(--amber);box-shadow:inset 0 1px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.16), var(--shadow);color:#3A2A0F;}
+.study-tool-btn.active::after{opacity:.25;}
+.study-tool-btn:disabled{opacity:.35;cursor:not-allowed;}
 
 .timer-track{height:8px;border-radius:3px;background:var(--mortar);overflow:hidden;margin-bottom:14px;
   box-shadow: inset 0 2px 3px rgba(0,0,0,.12);
@@ -59,6 +63,18 @@
 .study-mask .mlabel.tab-below{
   top:auto; bottom:-24px;
   border-radius:0 5px 5px 5px;
+}
+
+/* Hint overlay — deliberately high-contrast (solid dark backdrop, white
+   text) regardless of the clay/amber hatch pattern behind it, since
+   the whole point is being readable while the actual answer stays hidden. */
+.mask-hint-overlay{
+  position:absolute; inset:6%;
+  background:rgba(20,17,14,.88);
+  color:#fff; border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  text-align:center; padding:6px; font-size:12px; line-height:1.35;
+  overflow:hidden; pointer-events:none;
 }
 
 .study-footer-text{text-align:center;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--ink-soft);margin-bottom:16px;min-height:1.3em;}

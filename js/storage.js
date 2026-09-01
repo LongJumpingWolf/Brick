@@ -134,9 +134,9 @@ async function seedDemoImage(){
 
 /* ---------- Wall/Brick tree (localStorage) ---------- */
 function seedTree(){
-  const maskA = { id:uid(), shape:'ellipse', x:44, y:44, w:24, h:16, label:'Nucleolus' };
-  const maskB = { id:uid(), shape:'ellipse', x:33, y:39, w:34, h:23, label:'Nucleus' };
-  const maskC = { id:uid(), shape:'rect', x:2, y:80, w:96, h:14, label:'Cytoplasm' };
+  const maskA = { id:uid(), shape:'ellipse', x:44, y:44, w:24, h:16, label:'Nucleolus', hint:'A small dense body inside the nucleus itself.' };
+  const maskB = { id:uid(), shape:'ellipse', x:33, y:39, w:34, h:23, label:'Nucleus', hint:'The largest membrane-bound structure in the cell.' };
+  const maskC = { id:uid(), shape:'rect', x:2, y:80, w:96, h:14, label:'Cytoplasm', hint:'' };
   const masks = [maskA, maskB, maskC];
   const cards = masks.map(m => ({
     id: uid(), type:'occlusion', imgHash:'demo-cell-diagram', imgW:600, imgH:400,

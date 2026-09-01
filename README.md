@@ -119,6 +119,21 @@ build that as its own piece of work.
   the one you're actually running, a card graded Again reappears a few
   cards later so you get another shot at it before the session ends,
   rather than just vanishing until you manually restart the deck.
+- **Cement (bookmark).** Press the Cement button or hit `C` while
+  reviewing to bookmark a card — this also logs it as Again and
+  requeues it, same mechanism as above, so a cemented card comes back
+  before the session ends. Pressing `C` again on a card you'd already
+  cemented (on a later revisit) un-bookmarks it without forcing a
+  second miss — you just stay on the card and can grade normally.
+- **Hints, occlusion cards only.** Each drawn shape can carry an
+  optional hint, separate from its label (the label is the answer,
+  shown only on reveal; the hint is a clue, shown on request while
+  still hidden). Press the Hints button or hit `H` to reveal it,
+  overlaid directly on the occluded region in high-contrast white-on-
+  dark so it stays readable regardless of the hatch pattern underneath.
+  The hint only ever applies to the ONE shape the card is actually
+  testing — in Hide All mode every shape looks hidden identically, but
+  Hints won't leak clues for shapes the card isn't asking about.
 - **Space bar** does double duty: reveals the card when it's hidden,
   and grades Good when it's already revealed — one key covers the
   whole rhythm of a review.
@@ -129,6 +144,14 @@ build that as its own piece of work.
   a basic card, all before naming the brick and hitting the single
   "Create brick" button. A live counter near that button shows how
   many cards are staged across all three tabs combined.
+
+## Editor behavior
+
+- **Hint field auto-focuses after drawing.** Finish dragging out a
+  rectangle or ellipse and the cursor jumps straight into that shape's
+  hint field in the list below — a PowerPoint-style "just placed a text
+  box, start typing" flow, without the added complexity/fragility of
+  making the canvas shape itself directly editable in place.
 
 ## Deploy
 

@@ -115,6 +115,15 @@ async function main(){
   assert(evalInPage('editorShapes.length') === 1, 'dragging with the Rectangle tool creates one shape (got ' + evalInPage('editorShapes.length') + ')');
   assert(evalInPage('editorShapes[0].shape') === 'rect', 'the created shape is a rectangle');
 
+  // PowerPoint-style auto-focus: right after drawing, focus should already
+  // be in that shape's hint field, ready to type — checked immediately,
+  // before any later interaction has a chance to move focus elsewhere.
+  const justDrawnId = evalInPage('editorShapes[0].id');
+  assert(doc.activeElement.classList.contains('hint-input') && doc.activeElement.dataset.id === justDrawnId, 'the hint field for the just-drawn shape is auto-focused — got focus on: "' + doc.activeElement.className + '"');
+  doc.activeElement.value = 'Think about what sits closest to the outer edge.';
+  doc.activeElement.dispatchEvent(new window.Event('input', { bubbles:true }));
+  assert(evalInPage(`editorShapes.find(s=>s.id==='${justDrawnId}').hint`) === 'Think about what sits closest to the outer edge.', 'typing into the auto-focused hint field updates that shape\'s hint');
+
   // switch to Ellipse tool and draw a second shape
   doc.querySelector('.io-tool[data-tool="ellipse"]').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
@@ -403,6 +412,87 @@ async function main(){
   studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
   assert(doc.querySelector('.study-text-inner').innerHTML.includes('median'), 'revealing shows the actual answer');
+
+  // =========================================================
+  // Hints: occlusion-only, scoped to the active mask only, contrast-safe
+  // =========================================================
+  const hintsBtn = doc.getElementById('hintsBtn');
+
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(hintsBtn.style.display === 'none', 'Hints button is hidden entirely for a Basic (non-occlusion) card');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(hintsBtn.style.display !== 'none', 'Hints button is shown for an occlusion card');
+  assert(!hintsBtn.disabled, 'Hints button is enabled — the seeded first card\'s active mask has a hint set');
+  assert(doc.querySelectorAll('.mask-hint-overlay').length === 0, 'no hint overlay shown before pressing Hints');
+
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'h', bubbles:true }));
+  await sleep(10);
+  assert(hintsBtn.classList.contains('active'), '"H" hotkey toggles the Hints button into its active state');
+  const hintOverlays = doc.querySelectorAll('.mask-hint-overlay');
+  assert(hintOverlays.length === 1, 'exactly ONE hint overlay is shown — got ' + hintOverlays.length);
+  const activeMaskEl = doc.querySelector('.study-mask.active-mask');
+  assert(activeMaskEl.querySelector('.mask-hint-overlay') !== null, 'the hint overlay renders INSIDE the active (currently-tested) mask specifically');
+  const nonActiveHidden = Array.from(doc.querySelectorAll('.study-mask.hidden-box:not(.active-mask)'));
+  assert(nonActiveHidden.every(el => !el.querySelector('.mask-hint-overlay')), 'the other hidden masks show NO hint overlay — Hide All mode does not leak hints for masks the card isn\'t testing');
+  assert(hintOverlays[0].textContent.length > 3, 'the hint overlay actually shows hint text');
+
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'h', bubbles:true }));
+  await sleep(10);
+  assert(doc.querySelectorAll('.mask-hint-overlay').length === 0, 'pressing "H" again hides the hint overlay');
+  assert(!hintsBtn.classList.contains('active'), 'Hints button loses its active state on the second press');
+
+  // =========================================================
+  // Cement: bookmark + auto-Again, toggled by C
+  // =========================================================
+  const cementBtn = doc.getElementById('cementBtn');
+  assert(!cementBtn.classList.contains('active'), 'a fresh card starts un-cemented');
+  const cementedCardId = evalInPage('currentCard().id');
+  const posBeforeCement = evalInPage('session.pos');
+  const missedBeforeCement = evalInPage('session.missed');
+  const orderLenBeforeCement = evalInPage('session.order.length');
+
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'c', bubbles:true }));
+  await sleep(20);
+  assert(evalInPage('session.pos') === posBeforeCement + 1, 'pressing Cement auto-advances to the next card (same as an Again grade)');
+  assert(evalInPage('session.missed') === missedBeforeCement + 1, 'pressing Cement counts toward the missed/again tally');
+  assert(evalInPage('session.order.length') === orderLenBeforeCement + 1, 'the cemented card was requeued within this session, same as any other Again');
+  const cementedLog = JSON.parse(window.localStorage.getItem('brickReviewLog_v1'));
+  assert(cementedLog[cementedLog.length - 1].cardId === cementedCardId && cementedLog[cementedLog.length - 1].good === false, 'a real Again review event was logged for the cemented card');
+  const treeAfterCement = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  const findCementedCard = (n) => n.type==='deck' ? n.cards.find(c=>c.id===cementedCardId) : (n.children||[]).map(findCementedCard).find(Boolean);
+  assert(findCementedCard(treeAfterCement).cemented === true, 'the cemented flag is actually persisted to localStorage, not just in-memory');
+
+  // Un-cement: revisit the SAME card later in this session and toggle off
+  // (order.length grew above, and the cemented card was reinserted a few
+  // slots ahead — advance through the intervening cards to reach it again).
+  while (evalInPage('currentCard().id') !== cementedCardId && evalInPage('session.pos') < evalInPage('session.order.length') - 1){
+    studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(10);
+    doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(20);
+  }
+  assert(evalInPage('currentCard().id') === cementedCardId, 'reached the requeued cemented card again in this same session');
+  assert(cementBtn.classList.contains('active'), 'Cement button correctly shows the active state on a revisit to an already-cemented card');
+  const posBeforeUncement = evalInPage('session.pos');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'c', bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('session.pos') === posBeforeUncement, 'un-cementing does NOT advance the card or force another grade — you stay put and can review normally');
+  assert(!cementBtn.classList.contains('active'), 'Cement button reflects the un-cemented state immediately');
+  const treeAfterUncement = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  assert(findCementedCard(treeAfterUncement).cemented === false, 'un-cementing is also persisted to localStorage');
 
   // Cancel/reopen resets editorCardType back to Occlusion and clears staged cards
   doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));

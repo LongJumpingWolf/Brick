@@ -73,9 +73,12 @@ async function renderStudyCard(){
 
   session.revealed = false;
   session.timedOutThisAttempt = false;
+  session.hintsShown = false;
   document.getElementById('gradeRow').style.opacity = '0';
   document.getElementById('gradeRow').style.pointerEvents = 'none';
   setTapHint('tap ' + (c.type === 'occlusion' ? 'image' : 'card') + ' to reveal');
+  updateCementBtn(c);
+  updateHintsBtnVisibility(c);
   paintCardContent(c);
   session.remaining = studyTimePerCard;
   startOrResumeTimer();
@@ -124,13 +127,58 @@ function paintMasks(c){
     const cls = 'study-mask' + (hidden ? ' hidden-box' : ' revealed-box') + (isActive ? ' active-mask' : '') + shapeCls;
     const tabCls = labelShouldTabBelow(m.y) ? ' tab-below' : '';
     const label = hidden ? '' : '<span class="mlabel' + tabCls + '">' + escapeHtml(m.label || '?') + '</span>';
-    return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + '</div>';
+    // Hints only ever apply to the ONE mask this card is actually
+    // testing — in Hide All mode every box is hidden identically, but
+    // showing a hint for every one of them would just be handing out
+    // every answer on the card at once, not a hint for the specific
+    // thing being asked. Hide One mode already only hides the active
+    // box, so this restriction falls out naturally there too.
+    const showHint = hidden && isActive && session.hintsShown && m.hint;
+    const hintOverlay = showHint ? '<div class="mask-hint-overlay">' + formatInline(m.hint) + '</div>' : '';
+    return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + hintOverlay + '</div>';
   }).join('');
   stage.innerHTML = (img ? img.outerHTML : '') + overlays;
 
   if (session.revealed && c.backExtra) document.getElementById('studyFooterText').textContent = c.backExtra;
   else document.getElementById('studyFooterText').textContent = '';
 }
+function toggleHints(){
+  const c = currentCard();
+  if (c.type !== 'occlusion') return;
+  session.hintsShown = !session.hintsShown;
+  paintCardContent(c);
+  document.getElementById('hintsBtn').classList.toggle('active', session.hintsShown);
+}
+function updateHintsBtnVisibility(c){
+  const btn = document.getElementById('hintsBtn');
+  const hasHint = c.type === 'occlusion' && c.masks.find(m => m.id === c.activeMaskId && m.hint);
+  btn.style.display = c.type === 'occlusion' ? '' : 'none';
+  btn.disabled = !hasHint;
+  btn.classList.remove('active');
+  btn.title = hasHint ? 'Show a hint for this occlusion (H)' : 'No hint set for this occlusion';
+}
+
+/* Cement: bookmark the current card AND, on the transition to cemented,
+   treat it the same as pressing Again — logged as a miss, requeued
+   within this session, advances on. Un-cementing (pressing again on an
+   already-cemented card) just clears the flag; it doesn't force a
+   second miss on top of the first. */
+function toggleCement(){
+  const c = currentCard();
+  c.cemented = !c.cemented;
+  saveTreeNow();
+  if (c.cemented){
+    announce('Cemented — logged as Again, you\'ll see it again this session');
+    gradeCurrent(false); // also advances to the next card
+  } else {
+    announce('Un-cemented');
+    updateCementBtn(c);
+  }
+}
+function updateCementBtn(c){
+  document.getElementById('cementBtn').classList.toggle('active', !!c.cemented);
+}
+
 function setTapHint(text, warn){
   const el = document.getElementById('studyTapHint');
   el.textContent = text;
@@ -254,14 +302,15 @@ function initStudyScreens(){
   document.getElementById('studyStage').addEventListener('click', ()=>{ if (session) toggleReveal(); });
   document.getElementById('gradeAgain').addEventListener('click', ()=>gradeCurrent(false));
   document.getElementById('gradeGood').addEventListener('click', ()=>gradeCurrent(true));
+  document.getElementById('cementBtn').addEventListener('click', ()=>{ if (session) toggleCement(); });
+  document.getElementById('hintsBtn').addEventListener('click', ()=>{ if (session) toggleHints(); });
   document.getElementById('studyBackBtn').addEventListener('click', ()=>{ stopAnyStudyTimer(); showScreen('screenWall'); renderTree(); });
 
   document.getElementById('restartScrollBtn').addEventListener('click', beginStudy);
   document.getElementById('doneBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
 
-  // Space: reveal when hidden, grade Good when already revealed —
-  // a single key that covers the whole rhythm of a review without
-  // reaching for the mouse or tabbing to a specific button.
+  // Space: reveal when hidden, grade Good when already revealed.
+  // C: toggle Cement (bookmark + auto-Again). H: toggle Hints (occlusion only).
   document.addEventListener('keydown', (e)=>{
     if (!document.getElementById('screenStudy').classList.contains('active')) return;
     if (!session) return;
@@ -269,6 +318,12 @@ function initStudyScreens(){
       e.preventDefault();
       if (!session.revealed) toggleReveal();
       else gradeCurrent(true);
+    } else if (e.key === 'c' || e.key === 'C'){
+      e.preventDefault();
+      toggleCement();
+    } else if (e.key === 'h' || e.key === 'H'){
+      e.preventDefault();
+      toggleHints();
     }
   });
 }
