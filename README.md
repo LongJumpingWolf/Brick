@@ -29,22 +29,29 @@ css/
   components.css              brick buttons, modals, tile menu, shared
                                text-formatting classes (.highlight,
                                .cloze-blank, .cloze-answer)
-  layout.css                  app shell, top bar, tile grid
+  layout.css                  app shell, top bar, tile grid, responsive width
   preview.css                  brick preview screen
   occlusion-editor.css        toolbar, shapes, resize handles
   card-types.css               card-type tabs, format toolbar, staged
                                card list, cloze live preview
   study.css                   study screen, timer bar, text-mode card
+  settings.css                 Settings screen, recycle bin rows, export picker
 js/
-  storage.js                  IndexedDB image store (hash-deduped) + localStorage tree/log
+  storage.js                  IndexedDB image store (hash-deduped) + localStorage
+                               tree/log/trash/ImgBB-key persistence
   scheduler.js                 SM-2-style spaced repetition
   text-format.js               bold/italic/underline/highlight + cloze
                                front/back parsing — shared by the editor
                                preview and study rendering
-  tree.js                      Wall/Brick CRUD, kebab menu, drag-drop, search, keyboard nav
+  tree.js                      Wall/Brick CRUD, kebab menu, drag-drop, search,
+                               keyboard nav, recycle-bin operations
   occlusion-editor.js         the shape editor (Occlusion tab only)
   basic-cloze.js                Basic/Cloze tabs — staging + generation
   study.js                     preview + study/review loop, all 3 card types
+  import-export.js             bundle build/parse — selective export,
+                               fresh-ID import merge
+  settings.js                   Settings screen UI: recycle bin list,
+                               export picker, import handling, ImgBB key form
   app.js                       shared shell helpers + boot (loaded LAST)
 test/
   smoketest.js                 headless integration test — see below
@@ -55,13 +62,15 @@ package.json                    dev-only test deps + scripts
 Each file is scoped to one concern on purpose — if you need to change
 how shapes resize, that's entirely inside `occlusion-editor.js`; if you
 need to change how Basic cards stage, that's entirely inside
-`basic-cloze.js`; neither touches the other. Files are loaded as plain
+`basic-cloze.js`; if you need to change the export bundle format,
+that's entirely inside `import-export.js`. Files are loaded as plain
 `<script>` tags (no bundler, no build step), so **script order in
 `index.html` matters**: `storage.js`, `scheduler.js`, `text-format.js`
 first (no dependencies on the others), then `tree.js` /
-`occlusion-editor.js` / `basic-cloze.js` / `study.js` (depend on those
-three), then `app.js` last (calls the `init...()` function each of the
-other files exports).
+`occlusion-editor.js` / `basic-cloze.js` / `study.js` /
+`import-export.js` / `settings.js` (depend on those three), then
+`app.js` last (calls the `init...()` function each of the other files
+exports).
 
 ## Run it locally
 
@@ -82,7 +91,7 @@ npm test
 ```
 
 This runs a headless-browser (jsdom) integration test that loads the
-real `index.html` and all eight real `js/*.js` files — via actual
+real `index.html` and all ten real `js/*.js` files — via actual
 `<script>` elements, not `eval()`, so it accurately exercises the same
 cross-file scope-sharing the app relies on in a real browser — then
 drives the full loop: create a Wall, open the occlusion editor, draw a
@@ -93,27 +102,44 @@ Hide All mode, stage and create Basic cards (with formatting), stage
 and create Cloze cards (with correct front/back parsing), confirm an
 Again-graded card requeues within the same session, confirm Space bar
 reveals then grades Good, confirm the label tab sits outside the mask
-border, and confirm mixing Cloze/Basic/Occlusion cards into one brick
-across tab switches — nothing finalizes early — and confirm Cement
-Mode filters bricks to only their cemented cards without touching the
-Wall structure, and confirm Hints persist as a session-wide toggle
-across cards rather than resetting per card. 186 assertions, all
+border, confirm mixing Cloze/Basic/Occlusion cards into one brick
+across tab switches — nothing finalizes early — confirm Cement Mode
+filters bricks to only their cemented cards without touching the Wall
+structure, confirm Hints persist as a session-wide toggle across
+cards, delete a Wall and confirm it lands in the Recycle Bin (not
+gone), restore it, permanently purge it, empty the bin, open the
+Export picker and confirm the cascading folder-checkbox selection
+actually produces a subset bundle containing only the referenced
+image (not every image in the app), and run a full export → import
+round-trip confirming every imported node and card gets a genuinely
+fresh id with no collision against the original. 227 assertions, all
 currently passing.
+
+This process has caught real bugs more than once, including one this
+session: tiles were rendered as `<button class="tile">` with a nested
+`<button class="tile-kebab">` inside — invalid HTML, since a button
+can't contain another button — which meant the kebab dropdown menu had
+never actually been exercised by any earlier test run. Fixed by making
+the tile wrapper a `<div role="button">` instead.
 
 ## Database / environment variables
 
-**None needed right now.** Everything lives in the browser's own
-localStorage and IndexedDB — there's no Supabase, no serverless
-function, no API key of any kind in this build. You can deploy this to
-Vercel exactly as-is with zero environment variables set.
+**None needed to deploy.** Everything lives in the browser's own
+localStorage and IndexedDB by default — no Supabase, no serverless
+function required. You can deploy this to Vercel with zero environment
+variables set and it works fully.
 
-If you later want cross-device cloud sync (so a brick made on your
-laptop shows up on your phone), that's a real addition, not a flag to
-flip — it would mean wiring up Supabase (SUPABASE_URL,
-SUPABASE_ANON_KEY as env vars) for the tree/review-log data, plus an
-api/upload-image.js serverless relay to ImgBB (IMGBB_API_KEY) for
-the images, same pattern Kardex already uses. Say the word and I'll
-build that as its own piece of work.
+The one **optional** exception: Settings → Image Hosting lets you add
+an ImgBB API key to back up occlusion images to the cloud as you add
+them. This is a client-only, no-relay implementation — the key is used
+directly from the browser (visible in outgoing network requests) since
+there's no server in this static build to keep it private. Fine for a
+personal key on a personal deployment; don't paste in a shared/team
+key. If you want a properly private setup, that's a real addition —
+wiring up Supabase (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) for the
+tree/review-log data, plus an `api/upload-image.js` serverless relay to
+ImgBB (`IMGBB_API_KEY` kept server-side), same pattern Kardex already
+uses. Say the word and I'll build that as its own piece of work.
 
 ## Study session behavior
 
@@ -168,6 +194,30 @@ build that as its own piece of work.
   hint field in the list below — a PowerPoint-style "just placed a text
   box, start typing" flow, without the added complexity/fragility of
   making the canvas shape itself directly editable in place.
+
+## Settings
+
+Gear icon in the top bar.
+
+- **Import / Export.** Export opens a picker showing every Wall and
+  Brick with checkboxes — check individual Bricks, or check a whole
+  Wall to cascade-select everything inside it (folder checkboxes go
+  indeterminate when only some of their contents are selected, so a
+  partial pick is visible at a glance). Everything's checked by
+  default, so exporting "the entire thing" is just leaving it alone
+  and hitting Download. The exported `.json` only embeds images that
+  the selected Bricks actually reference, not your whole image
+  library. Import merges a `.json` back in under whichever Wall you
+  currently have open, with every node and card given a **fresh id** —
+  re-importing the same file twice, or importing into the same account
+  it came from, can never collide with or silently overwrite anything.
+- **Recycle Bin.** Deleting a Wall or Brick (kebab menu or the Delete
+  hotkey) no longer destroys it outright — it moves to the bin, full
+  contents intact, listed with Restore and Delete Forever per item,
+  plus an Empty Recycle Bin button. Restore puts it back where it came
+  from, or at the top level if that Wall no longer exists.
+- **Image Hosting (ImgBB).** Off by default — see the Database section
+  above for what turning it on actually means and the tradeoff involved.
 
 ## Deploy
 

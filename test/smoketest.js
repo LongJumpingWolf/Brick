@@ -47,7 +47,7 @@ async function main(){
     return v;
   }
 
-  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/app.js'];
+  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/import-export.js','js/settings.js','js/app.js'];
   scriptOrder.forEach(rel => runInPage(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
   await sleep(300); // let boot()'s async seedDemoImage() settle
 
@@ -737,6 +737,174 @@ async function main(){
   assert(window.localStorage.getItem('brickCementMode') === 'false', 'the off-state is persisted too');
   const seededTileFinal = doc.querySelector('[data-id="' + seededDeckId + '"]');
   assert(seededTileFinal.querySelector('.tile-meta').textContent.includes('total') && !seededTileFinal.querySelector('.tile-meta').textContent.includes('cemented'), 'tile reverts to the normal new/due/total display once Cement Mode is off');
+
+  // =========================================================
+  // Recycle Bin: delete is now soft-delete, restore/purge/empty
+  // =========================================================
+  window.confirm = () => true; // delete requires confirmation — jsdom's confirm() is unimplemented (returns falsy) unless stubbed
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  // create a throwaway Wall to delete, so this doesn't touch any earlier test's data
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Trash Test Wall';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const trashTestNode = evalInPage(`tree.children.find(c => c.name === 'Trash Test Wall')`);
+  assert(!!trashTestNode, 'throwaway wall created for the recycle bin test');
+  const trashCountBefore = evalInPage('trash.length');
+
+  const trashTestTile = doc.querySelector('[data-id="' + trashTestNode.id + '"]');
+  const kebabForTrash = trashTestTile.querySelector('.tile-kebab');
+  kebabForTrash.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('menuDelete').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.querySelector('[data-id="' + trashTestNode.id + '"]'), 'the deleted wall disappears from the Wall view');
+  assert(evalInPage('tree.children.find(c => c.name === \'Trash Test Wall\')') === undefined, 'the deleted wall is genuinely gone from the live tree, not just hidden');
+  assert(evalInPage('trash.length') === trashCountBefore + 1, 'a new recycle-bin entry was created');
+  const savedTrash1 = JSON.parse(window.localStorage.getItem('brickTrash_v1'));
+  assert(savedTrash1.some(t => t.node.name === 'Trash Test Wall'), 'the deleted wall (with its full contents) is actually persisted in the recycle bin, not lost');
+
+  // open Settings, see it listed
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('screenSettings').classList.contains('active'), 'Settings button opens the Settings screen');
+  assert(doc.getElementById('trashList').textContent.includes('Trash Test Wall'), 'the Recycle Bin section lists the deleted wall');
+
+  // restore it
+  const restoreBtn = doc.querySelector('[data-action="restore"][data-trash-id]');
+  restoreBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('trash.length') === trashCountBefore, 'restoring removes the entry from the recycle bin');
+  assert(!!evalInPage(`tree.children.find(c => c.name === 'Trash Test Wall')`), 'the restored wall is back in the live tree');
+  doc.getElementById('settingsBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!!doc.querySelector('[data-id="' + trashTestNode.id + '"]'), 'the restored wall tile reappears on the Wall screen');
+
+  // delete it again, this time purge it forever
+  doc.querySelector('[data-id="' + trashTestNode.id + '"] .tile-kebab').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('menuDelete').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  window.confirm = () => true;
+  const purgeBtn = doc.querySelector('[data-action="purge"][data-trash-id]');
+  purgeBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.getElementById('trashList').textContent.includes('Trash Test Wall'), 'purging removes it from the Recycle Bin list');
+  assert(!evalInPage(`trash.find(t => t.node && t.node.name === 'Trash Test Wall')`), 'purged item is gone from the trash array entirely, unrecoverable');
+
+  // Empty Recycle Bin clears everything (whatever else is in there from earlier tests too)
+  doc.getElementById('emptyTrashBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('trash.length') === 0, 'Empty Recycle Bin clears every entry');
+  assert(doc.getElementById('emptyTrashBtn').disabled, 'Empty Recycle Bin button disables itself once the bin is actually empty');
+
+  // =========================================================
+  // Export / Import: selective subset, round-trip integrity
+  // =========================================================
+  doc.getElementById('settingsBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('openExportBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('exportOverlay').classList.contains('active'), 'Export button opens the picker overlay');
+  const allChecksBefore = doc.querySelectorAll('#exportPickerTree .export-check');
+  assert(allChecksBefore.length > 0, 'picker renders checkboxes for the tree');
+  assert(Array.from(allChecksBefore).every(cb => cb.checked), 'every checkbox starts checked (default = export everything)');
+
+  // Select none, then check ONLY the seeded demo brick, to test a real subset export
+  doc.getElementById('selectNoneExportBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(Array.from(doc.querySelectorAll('#exportPickerTree .export-check')).every(cb => !cb.checked), 'Select none unchecks every box');
+  const seededDeckCheckbox = doc.querySelector('.deck-check[data-id="' + seededDeckId + '"]');
+  assert(!!seededDeckCheckbox, 'the seeded demo brick has its own checkbox in the picker');
+  seededDeckCheckbox.checked = true;
+  seededDeckCheckbox.dispatchEvent(new window.Event('change', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('exportCheckedIds.has(\'' + seededDeckId + '\')'), 'checking one deck box adds exactly that id to the export selection');
+  assert(evalInPage('exportCheckedIds.size') === 1, 'nothing else got pulled in — a real subset, not everything');
+
+  // build the bundle directly (skip the actual file-download side effect, which jsdom can't meaningfully verify) and feed it straight into import to prove round-trip integrity.
+  // evalInPage wraps in `window.__r = (...)`, which can't `await` — use an explicit async IIFE injected via runInPage instead.
+  runInPage(`
+    (async () => {
+      window.__exportBundle = await buildExportBundle(['${seededDeckId}']);
+    })();
+  `);
+  await sleep(50);
+  const exportedCounts = evalInPage('countBundleContents(window.__exportBundle.tree)');
+  assert(exportedCounts.bricks === 1, 'exported bundle contains exactly the one selected brick (got ' + exportedCounts.bricks + ')');
+  assert(exportedCounts.cards === 3, 'exported bundle carries all 3 of that brick\'s cards (got ' + exportedCounts.cards + ')');
+  assert(evalInPage('Object.keys(window.__exportBundle.images).length') === 1, 'exported bundle carries exactly the ONE image the seeded brick actually references, not every image in the app');
+  assert(evalInPage('window.__exportBundle.images["demo-cell-diagram"].dataUrl.startsWith("data:")'), 'the bundled image is embedded as a real data URL, self-contained');
+  doc.getElementById('cancelExportBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // now IMPORT that exact bundle back in and confirm a genuine, independent copy is created
+  const folderBeforeImport = evalInPage('tree.children.length');
+  runInPage(`
+    (async () => {
+      window.__importCounts = await importBundle(window.__exportBundle);
+    })();
+  `);
+  await sleep(50);
+  runInPage('renderTree();');
+  await sleep(10);
+  assert(evalInPage('tree.children.length') === folderBeforeImport + 1, 'import adds exactly one new top-level item (the re-imported wall/folder wrapper)');
+  const importedCounts = evalInPage('window.__importCounts');
+  assert(importedCounts.bricks === 1 && importedCounts.cards === 3, 'import reports the correct counts back — got ' + JSON.stringify(importedCounts));
+  const importedBrick = evalInPage(`(function find(n){ return n.type==='deck' && n.name==='Cell Diagram (demo)' && n.id !== '${seededDeckId}' ? n : (n.children||[]).map(find).find(Boolean); })(tree)`);
+  assert(!!importedBrick, 'the imported brick exists in the live tree, as a genuinely separate copy (different id from the original)');
+  assert(importedBrick.id !== seededDeckId, 'imported brick has a FRESH id — no collision with the original it was exported from');
+  assert(importedBrick.cards.length === 3, 'imported brick carries all 3 cards');
+  assert(importedBrick.cards.every(c => c.id !== undefined) && new Set(importedBrick.cards.map(c=>c.id)).size === 3, 'every imported card has its own fresh, unique id too');
+  assert(importedBrick.cards[0].imgHash === 'demo-cell-diagram', 'imported cards still correctly reference the shared image hash');
+  runInPage(`(async ()=>{ window.__importedImgOk = !!(await getImage('demo-cell-diagram')); })();`);
+  await sleep(30);
+  assert(evalInPage('window.__importedImgOk') === true, 'the image the import needed was actually restored into IndexedDB, not just referenced by a dangling hash');
+  const savedTreeAfterImport = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  const findImportedInStorage = (n) => n.type==='deck' && n.id===importedBrick.id ? n : (n.children||[]).map(findImportedInStorage).find(Boolean);
+  assert(!!findImportedInStorage(savedTreeAfterImport), 'the imported brick is actually persisted to localStorage, not just held in memory');
+
+  // =========================================================
+  // ImgBB key: save/load through Settings
+  // =========================================================
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('imgbbStatus').textContent.includes('No key set'), 'status correctly shows no key set initially');
+  doc.getElementById('imgbbKeyInput').value = 'test-imgbb-key-123';
+  doc.getElementById('saveImgbbKeyBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(window.localStorage.getItem('brickImgbbKey') === 'test-imgbb-key-123', 'ImgBB key is actually persisted to localStorage');
+  doc.getElementById('settingsBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('imgbbKeyInput').value === 'test-imgbb-key-123', 'reopening Settings shows the previously-saved key, not a blank field');
+  assert(!doc.getElementById('imgbbStatus').textContent.includes('No key set'), 'status text updates once a key is present');
+
+  // clearing the key
+  doc.getElementById('imgbbKeyInput').value = '';
+  doc.getElementById('saveImgbbKeyBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(window.localStorage.getItem('brickImgbbKey') === null, 'saving an empty key removes it from localStorage entirely, rather than storing an empty string');
+
+  // =========================================================
+  // Responsive layout: the app shell actually uses more width now
+  // =========================================================
+  const layoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf-8');
+  assert(/#app\{max-width:min\(1240px/.test(layoutCss), 'app shell width was widened from the old fixed 780px to a fluid, much larger cap');
+  assert(/@media \(max-width:600px\)/.test(layoutCss), 'a mobile-specific tightened padding rule exists alongside the wider desktop default');
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);

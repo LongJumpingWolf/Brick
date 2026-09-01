@@ -1,0 +1,32 @@
+.mini-btn{padding:6px 13px;border-radius:20px;font-size:11.5px;font-weight:600;background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--mortar-dark);color:var(--ink);border:none;}
+.mini-btn:hover{box-shadow:inset 0 0 0 1.5px var(--clay);color:var(--clay-dark);}
+
+.settings-section{margin-bottom:28px;padding-bottom:24px;border-bottom:1px solid var(--mortar);}
+.settings-section:last-child{border-bottom:none;}
+.settings-section-head h3{font-family:'Fraunces',serif;font-size:16px;margin:0 0 6px;}
+.settings-section-sub{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0 0 14px;}
+.settings-section-sub a{color:var(--clay-dark);}
+.settings-warn{font-size:11px;color:var(--clay-dark);background:rgba(181,75,54,.08);border:1px solid rgba(181,75,54,.25);border-radius:8px;padding:9px 11px;line-height:1.5;margin:0 0 14px;}
+.settings-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.settings-status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);margin:10px 0 0;}
+.brick-btn.danger-outline{box-shadow:inset 0 0 0 1.5px var(--clay); color:var(--clay-dark);}
+
+/* ---------- Recycle Bin rows ---------- */
+.trash-list{display:flex;flex-direction:column;gap:8px;}
+.trash-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--mortar-dark);border-radius:9px;padding:10px 12px;
+}
+.trash-info{min-width:0;}
+.trash-name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.trash-meta{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
+.trash-actions{display:flex;gap:6px;flex-shrink:0;}
+.mini-btn.danger{box-shadow:inset 0 0 0 1.5px var(--clay);color:var(--clay-dark);}
+.mini-btn.danger:hover{background:var(--clay);color:#fff;box-shadow:inset 0 0 0 1.5px var(--clay);}
+
+/* ---------- Export picker ---------- */
+.export-picker-tree{max-height:340px;overflow-y:auto;border:1px solid var(--mortar-dark);border-radius:9px;padding:10px;margin-bottom:16px;background:var(--wash);}
+.export-row{display:block;padding:6px 4px;font-size:13px;cursor:pointer;border-radius:6px;}
+.export-row:hover{background:var(--mortar);}
+.export-row input{margin-right:7px;vertical-align:middle;}
+.export-folder-row{font-weight:600;}
+.export-meta{color:var(--ink-soft);font-size:11px;font-family:'IBM Plex Mono',monospace;}

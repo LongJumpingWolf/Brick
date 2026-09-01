@@ -85,12 +85,12 @@ function renderTree(){
   grid.innerHTML = folder.children.map(n=>{
     if (n.type === 'folder'){
       const bricks = countBricks(n);
-      return '<button type="button" class="tile wall" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + bricks + ' bricks, folder">' +
+      return '<div class="tile wall" role="button" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + bricks + ' bricks, folder">' +
         dojoIcon +
         '<div class="tile-name">' + escapeHtml(n.name) + '</div>' +
         '<div class="tile-meta"><span>' + bricks + ' brick' + (bricks===1?'':'s') + '</span></div>' +
         '<button type="button" class="tile-kebab" tabindex="-1" aria-label="More options for ' + escapeHtml(n.name) + '">⋮</button>' +
-        '</button>';
+        '</div>';
     }
     const total = n.cards.length;
     const due = n.cards.filter(c => isCardDue(c.id, srsMap)).length;
@@ -98,19 +98,19 @@ function renderTree(){
     const cemented = n.cards.filter(c => c.cemented).length;
     if (cementMode){
       const emptyCls = cemented === 0 ? ' cement-empty' : '';
-      return '<button type="button" class="tile brick-tile' + emptyCls + '" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + cemented + ' cemented of ' + total + ' total, brick, draggable">' +
+      return '<div class="tile brick-tile' + emptyCls + '" role="button" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + cemented + ' cemented of ' + total + ' total, brick, draggable">' +
         brickIcon +
         '<div class="tile-name">' + escapeHtml(n.name) + '</div>' +
         '<div class="tile-meta"><span class="cemented-count">' + cemented + ' cemented</span><span>' + total + ' total</span></div>' +
         '<button type="button" class="tile-kebab" tabindex="-1" aria-label="More options for ' + escapeHtml(n.name) + '">⋮</button>' +
-        '</button>';
+        '</div>';
     }
-    return '<button type="button" class="tile brick-tile" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + newCount + ' new, ' + due + ' due of ' + total + ' total, brick, draggable">' +
+    return '<div class="tile brick-tile" role="button" draggable="true" data-id="' + n.id + '" tabindex="-1" aria-label="' + escapeHtml(n.name) + ', ' + newCount + ' new, ' + due + ' due of ' + total + ' total, brick, draggable">' +
       brickIcon +
       '<div class="tile-name">' + escapeHtml(n.name) + '</div>' +
       '<div class="tile-meta"><span class="new-count">' + newCount + ' new</span><span class="due">' + due + ' due</span><span>' + total + ' total</span></div>' +
       '<button type="button" class="tile-kebab" tabindex="-1" aria-label="More options for ' + escapeHtml(n.name) + '">⋮</button>' +
-      '</button>';
+      '</div>';
   }).join('');
 
   const grid2 = document.getElementById('tileGrid');
@@ -176,6 +176,9 @@ function openTile(tile){
 }
 
 /* ---------- delete / move / rename / duplicate ---------- */
+let trash = loadTrash();
+function saveTrashNow(){ saveTrash(trash); }
+
 function removeTile(tile){
   const id = tile.dataset.id;
   const node = nodeById(id);
@@ -186,11 +189,37 @@ function removeTile(tile){
   const list = tiles();
   const idx = list.indexOf(tile);
   parent.children = parent.children.filter(c => c.id !== id);
+  // Soft delete — moved to the recycle bin instead of destroyed outright,
+  // same shape as Windows' own Recycle Bin: gone from where it was, but
+  // recoverable (with its full contents intact, folder or deck alike)
+  // until you actually empty the bin.
+  trash.push({ trashId: uid(), deletedAt: Date.now(), originalParentId: parent.id, node });
+  saveTrashNow();
   saveTreeNow();
   renderTree();
-  announce('Deleted ' + name);
+  announce('Moved "' + name + '" to the recycle bin');
   const remaining = tiles();
   if (remaining.length) setActiveTile(remaining[Math.min(idx, remaining.length-1)]);
+}
+
+/* ---------- recycle bin operations ---------- */
+function restoreFromTrash(trashId){
+  const entry = trash.find(t => t.trashId === trashId);
+  if (!entry) return;
+  const targetParent = nodeById(entry.originalParentId) || nodeById('root');
+  targetParent.children.push(entry.node);
+  trash = trash.filter(t => t.trashId !== trashId);
+  saveTrashNow();
+  saveTreeNow();
+  announce('Restored "' + entry.node.name + '"' + (targetParent.id !== entry.originalParentId ? ' — its original wall no longer exists, restored to the top level instead' : ''));
+}
+function permanentlyDeleteFromTrash(trashId){
+  trash = trash.filter(t => t.trashId !== trashId);
+  saveTrashNow();
+}
+function emptyTrash(){
+  trash = [];
+  saveTrashNow();
 }
 
 let moveTargetId = null;

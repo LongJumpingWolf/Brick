@@ -1,5 +1,12 @@
-#app{max-width:780px;margin:0 auto;padding:0 18px 70px;}
-.topbar{display:flex;align-items:center;gap:12px;padding:22px 0 18px;}
+#app{max-width:min(1240px, 96vw);margin:0 auto;padding:0 24px 70px;}
+@media (max-width:600px){ #app{padding:0 14px 70px;} }
+/* The Wall screen genuinely benefits from the full width (more tiles
+   visible at once) — text-heavy screens don't, so they get their own
+   narrower reading column centered within it instead of stretching
+   every input to 1200px wide. */
+#screenEditor, #screenSettings{ max-width:900px; margin:0 auto; }
+.topbar{display:flex;align-items:center;gap:12px;padding:22px 0 18px;flex-wrap:wrap;}
+@media (max-width:360px){ .topbar{gap:8px;} }
 .logo{display:flex;align-items:center;gap:10px;}
 .logo-mark{width:30px;height:30px;position:relative;flex-shrink:0;}
 .logo-mark svg{width:100%;height:100%;}
@@ -15,7 +22,7 @@
 .crumb-sep{opacity:.4;}
 
 .search-row{display:flex;gap:10px;margin-bottom:16px;}
-.search-input-wrap{position:relative;flex:1;}
+.search-input-wrap{position:relative;flex:1;max-width:480px;}
 .search-input-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--ink-soft);pointer-events:none;}
 .search-input{width:100%;padding:9px 12px 9px 32px;border-radius:5px;border:none;background:var(--paper);
   box-shadow: inset 0 0 0 1.5px var(--mortar-dark);

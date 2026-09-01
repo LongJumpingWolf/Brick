@@ -140,6 +140,7 @@ async function boot(){
   initOcclusionEditor();
   initBasicClozeEditor();
   initStudyScreens();
+  initSettingsScreen();
   initShortcutsOverlay();
   initGlobalHotkeys();
 }

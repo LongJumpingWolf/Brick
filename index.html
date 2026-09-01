@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="css/occlusion-editor.css">
 <link rel="stylesheet" href="css/card-types.css">
 <link rel="stylesheet" href="css/study.css">
+<link rel="stylesheet" href="css/settings.css">
 </head>
 <body>
 <a href="#screenWall" class="visually-hidden focusable">Skip to Wall content</a>
@@ -33,10 +34,13 @@
     </div>
     <div class="topbar-spacer"></div>
     <button class="brick-btn outline icon-btn" id="cementModeBtn" aria-label="Toggle Cement Mode — study only cemented cards" title="Cement Mode (C)">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><rect x="7" y="8.5" width="4" height="7" rx="0.8"/><rect x="13" y="8.5" width="4" height="7" rx="0.8"/></svg>
     </button>
     <button class="brick-btn outline icon-btn" id="shortcutsBtn" aria-label="Keyboard shortcuts (press ?)" title="Keyboard shortcuts (?)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="brick-btn outline icon-btn" id="settingsBtn" aria-label="Settings">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
     <button class="brick-btn outline icon-btn" id="homeBtn" aria-label="Home">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
@@ -59,6 +63,61 @@
       <button type="button" class="brick-btn small" id="newBrickBtn">＋ New Brick <kbd style="margin-left:6px;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff;">N</kbd></button>
     </div>
     <div class="tile-grid" id="tileGrid" role="grid" aria-label="Wall contents"></div>
+  </div>
+
+  <!-- ===================== SCREEN: SETTINGS ===================== -->
+  <div class="screen" id="screenSettings">
+    <div class="editor-head">
+      <button type="button" class="brick-btn outline icon-btn" id="settingsBackBtn" aria-label="Back">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h2>Settings</h2>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
+        <h3>Import / Export</h3>
+        <p class="settings-section-sub">Choose exactly which Walls and Bricks to export, or select everything. Imports merge into whichever Wall you currently have open.</p>
+      </div>
+      <div class="settings-row">
+        <button type="button" class="brick-btn small" id="openExportBtn">Export…</button>
+        <button type="button" class="brick-btn outline small" id="importBtn">Import…</button>
+        <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
+        <h3>Recycle Bin</h3>
+        <p class="settings-section-sub">Deleted Walls and Bricks land here first — nothing is destroyed outright until you empty it.</p>
+      </div>
+      <div class="settings-row" style="margin-bottom:14px;">
+        <button type="button" class="brick-btn outline small danger-outline" id="emptyTrashBtn">Empty Recycle Bin</button>
+      </div>
+      <div class="trash-list" id="trashList"></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
+        <h3>Image Hosting — ImgBB</h3>
+        <p class="settings-section-sub">
+          Currently <strong>not active</strong> — every image lives only in this browser's local storage. Add an
+          <a href="https://api.imgbb.com/" target="_blank" rel="noopener">ImgBB</a> API key to optionally back up
+          occlusion images to the cloud as you add them.
+        </p>
+        <p class="settings-warn">
+          ⚠ This is a static, no-backend build, so there's no server to keep the key private —
+          it's used directly from your browser and is visible in outgoing network requests. Fine for a
+          personal key on a personal deployment; don't use a shared/team key here. A serverless relay
+          (the more secure option, same pattern Kardex uses) is a separate build if you want it.
+        </p>
+      </div>
+      <div class="settings-row">
+        <input type="text" id="imgbbKeyInput" class="modal-input" placeholder="ImgBB API key" style="margin-bottom:0;flex:1;">
+        <button type="button" class="brick-btn small" id="saveImgbbKeyBtn">Save</button>
+      </div>
+      <p class="settings-status" id="imgbbStatus"></p>
+    </div>
   </div>
 
   <!-- ===================== SCREEN: NEW BRICK — card editor ===================== -->
@@ -225,7 +284,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
       </button>
       <button type="button" class="brick-btn outline icon-btn study-tool-btn" id="cementBtn" aria-label="Cement (bookmark) this card" title="Cement — bookmark + Again (C)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="1.5"/><rect x="7" y="8.5" width="4" height="7" rx="0.8"/><rect x="13" y="8.5" width="4" height="7" rx="0.8"/></svg>
       </button>
     </div>
     <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
@@ -294,6 +353,22 @@
   </div>
 </div>
 
+<!-- ===================== EXPORT PICKER ===================== -->
+<div class="overlay" id="exportOverlay" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+  <div class="overlay-modal wide">
+    <h3 id="exportTitle">Export…</h3>
+    <div class="settings-row" style="margin-bottom:10px;">
+      <button type="button" class="mini-btn" id="selectAllExportBtn">Select all</button>
+      <button type="button" class="mini-btn" id="selectNoneExportBtn">Select none</button>
+    </div>
+    <div class="export-picker-tree" id="exportPickerTree"></div>
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small" id="cancelExportBtn">Cancel</button>
+      <button type="button" class="brick-btn small" id="confirmExportBtn">Download export</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== MOVE PICKER ===================== -->
 <div class="overlay" id="moveOverlay" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
   <div class="overlay-modal">
@@ -350,6 +425,8 @@
 <script src="js/occlusion-editor.js"></script>
 <script src="js/basic-cloze.js"></script>
 <script src="js/study.js"></script>
+<script src="js/import-export.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
