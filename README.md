@@ -60,6 +60,8 @@ js/
                                fresh-ID import merge
   settings.js                   Settings screen UI: recycle bin list,
                                export picker, import handling, ImgBB key form
+  imgbb-backup.js               pending-image detection, the mandatory
+                               batched-upload runner, progress modal
   app.js                       shared shell helpers + boot (loaded LAST)
 test/
   smoketest.js                 headless integration test — see below
@@ -76,8 +78,9 @@ that's entirely inside `import-export.js`. Files are loaded as plain
 `index.html` matters**: `storage.js`, `scheduler.js`, `text-format.js`
 first (no dependencies on the others), then `tree.js` /
 `occlusion-editor.js` / `basic-cloze.js` / `study.js` /
-`import-export.js` / `settings.js` (depend on those three), then
-`app.js` last (calls the `init...()` function each of the other files
+`import-export.js` / `settings.js` / `imgbb-backup.js` (depend on
+those three), then `app.js` last (calls the `init...()` function each
+of the other files
 exports).
 
 ## Run it locally
@@ -99,7 +102,7 @@ npm test
 ```
 
 This runs a headless-browser (jsdom) integration test that loads the
-real `index.html` and all ten real `js/*.js` files — via actual
+real `index.html` and all eleven real `js/*.js` files — via actual
 `<script>` elements, not `eval()`, so it accurately exercises the same
 cross-file scope-sharing the app relies on in a real browser — then
 drives the full loop: create a Wall, open the occlusion editor, draw a
@@ -118,10 +121,16 @@ cards, delete a Wall and confirm it lands in the Recycle Bin (not
 gone), restore it, permanently purge it, empty the bin, open the
 Export picker and confirm the cascading folder-checkbox selection
 actually produces a subset bundle containing only the referenced
-image (not every image in the app), and run a full export → import
+image (not every image in the app), run a full export → import
 round-trip confirming every imported node and card gets a genuinely
-fresh id with no collision against the original. 227 assertions, all
-currently passing.
+fresh id with no collision against the original, pause a session and
+resume it across a simulated `pagehide`/`visibilitychange` (hard tab
+close, phone locking), run the full ImgBB batch backup end to end with
+a mocked network (real batching, a deliberately-failing image that
+gets retried then correctly reported, no re-nagging on a simple
+re-save), and confirm a second touch mid-draw cancels the gesture and
+hands off to a manually-computed scroll rather than fighting it.
+293 assertions, all currently passing.
 
 This process has caught real bugs more than once, including one this
 session: tiles were rendered as `<button class="tile">` with a nested
@@ -151,6 +160,11 @@ uses. Say the word and I'll build that as its own piece of work.
 
 ## Study session behavior
 
+- **Again/Good buttons are fixed to the viewport.** No more scrolling
+  down to reach them past a tall occlusion image or long card text —
+  they float above the content, accounting for notched-phone safe
+  areas at the bottom.
+
 - **Cement Mode.** A view-wide toggle (topbar button or `C` on the
   Wall screen) — the Wall itself doesn't change at all, every folder
   and brick is still there and navigable, but tiles show a cemented
@@ -158,7 +172,24 @@ uses. Say the word and I'll build that as its own piece of work.
   while Cement Mode is on studies ONLY its cemented cards (regardless
   of SM-2 due-ness). A brick with zero cemented cards is visually
   dimmed and shows a "no cemented cards" message rather than silently
-  starting an empty session.
+  starting an empty session. Turning it on also applies a real theme —
+  cools the whole background and re-colors Brick tiles toward the same
+  concrete greys as the cinder-block icon itself, so it's unmistakable
+  at a glance that you're in the filtered view. The topbar toggle is
+  Wall-screen-only; showing it next to the Study screen's own per-card
+  Cement button (same icon, different meaning) read as two confusing
+  near-duplicate rows.
+- **Paused sessions survive closing the app, on purpose or by accident.**
+  Every card transition snapshots a resumable checkpoint (deck, card
+  order, position, score, hints state) to localStorage. Hitting Back
+  mid-session is treated as a pause, not an abandonment — reopening
+  that brick's preview offers Resume (exact card) or Start Fresh. For
+  closures that skip buttons entirely — a hard tab close, a crash, a
+  phone locking mid-review — both `pagehide` and `visibilitychange`
+  independently re-save the same checkpoint, since mobile browsers
+  routinely skip `beforeunload` altogether. Only one paused session
+  exists at a time; starting a different brick supersedes it; finishing
+  a session (resumed or fresh) clears the checkpoint.
 - **"Again" requeues the card in the same session.** SM-2 marking a
   missed card "due now" only matters for a future session — within
   the one you're actually running, a card graded Again reappears a few
@@ -202,6 +233,16 @@ uses. Say the word and I'll build that as its own piece of work.
   hint field in the list below — a PowerPoint-style "just placed a text
   box, start typing" flow, without the added complexity/fragility of
   making the canvas shape itself directly editable in place.
+- **Two-finger scroll on touch.** The drawing stage disables native
+  touch gestures (`touch-action:none`) so a single finger never fights
+  the browser's own pan while drawing/moving/resizing a shape — but
+  that alone would also kill the ability to scroll the page on a phone
+  entirely. A second finger landing mid-gesture cancels whatever
+  single-finger action was in progress (no half-finished shape lingers)
+  and hands off to a manually-computed scroll based on the two
+  fingers' average movement, since `touch-action` can't distinguish
+  finger count on its own — native two-finger panning had to be
+  reimplemented by hand rather than conditionally toggled.
 
 ## Settings
 
@@ -226,6 +267,24 @@ Gear icon in the top bar.
   from, or at the top level if that Wall no longer exists.
 - **Image Hosting (ImgBB).** Off by default — see the Database section
   above for what turning it on actually means and the tradeoff involved.
+  Adding a key for the first time triggers a **mandatory batch backup**
+  of every image you already have locally that's never been uploaded —
+  a non-dismissable progress modal (no Escape, no click-away) walks
+  through them in small batches with real pauses between each one.
+  ImgBB doesn't publish any official numeric rate limit — not requests
+  per minute, not per hour, nothing — so rather than guess at a real
+  ceiling, the defaults are deliberately conservative: 5 images per
+  batch, a 2-second pause between images within a batch, a full
+  60-second pause between batches, and up to 2 retries per image
+  (respecting a `Retry-After` header if the server sends one) before
+  giving up on that one and moving on. A small badge on the Settings
+  icon in the topbar surfaces when there are unbacked images and no key
+  is set yet, without nagging via a popup. Anything that fails after
+  retries stays visible in the status text and can be retried later
+  with an explicit "Retry pending backups" button — re-saving an
+  already-set key does *not* re-trigger the mandatory modal on its own,
+  since that would mean getting blocked by it on every single visit to
+  Settings if one image is persistently failing.
 
 ## Deploy
 

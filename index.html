@@ -144,6 +144,7 @@
         <button type="button" class="brick-btn small" id="saveImgbbKeyBtn">Save</button>
       </div>
       <p class="settings-status" id="imgbbStatus"></p>
+      <button type="button" class="brick-btn outline small" id="retryImgbbBackupBtn" style="display:none;margin-top:10px;">Retry pending backups</button>
     </div>
   </div>
 
@@ -284,6 +285,13 @@
         <div class="preview-title" id="previewTitle">—</div>
         <div class="preview-sub" id="previewSub">—</div>
       </div>
+      <div class="resume-banner" id="resumeBanner" style="display:none;">
+        <span id="resumeBannerText"></span>
+        <div class="resume-banner-actions">
+          <button type="button" class="mini-btn" id="resumeSessionBtn">Resume</button>
+          <button type="button" class="mini-btn" id="discardSessionBtn">Start fresh</button>
+        </div>
+      </div>
       <div class="stat-bricks">
         <div class="stat-brick due"><div class="num" id="statDue">0</div><div class="lbl">Due</div></div>
         <div class="stat-brick new"><div class="num" id="statNew">0</div><div class="lbl">New</div></div>
@@ -387,6 +395,28 @@
   </div>
 </div>
 
+<!-- ===================== IMGBB MANDATORY BACKUP ===================== -->
+<!-- Deliberately no close/cancel affordance while running — see the
+     Escape-key handler in app.js, which explicitly skips this overlay. -->
+<div class="overlay" id="imgbbUploadOverlay" role="dialog" aria-modal="true" aria-labelledby="imgbbUploadTitle">
+  <div class="overlay-modal">
+    <h3 id="imgbbUploadTitle">Backing up images to ImgBB</h3>
+    <p class="settings-section-sub" style="margin-bottom:16px;">
+      Uploading <span id="imgbbUploadTotal">0</span> image<span id="imgbbUploadPluralHint"></span> you already
+      had locally, in small batches with real pauses between them to stay safely under ImgBB's usage limits.
+      This can take a few minutes for a lot of images — please don't close this tab until it finishes.
+    </p>
+    <div class="imgbb-progress-track"><div class="imgbb-progress-fill" id="imgbbUploadBarFill"></div></div>
+    <div class="imgbb-progress-row">
+      <span id="imgbbUploadStatus">Starting…</span>
+      <span class="mono" id="imgbbUploadCount">0 / 0</span>
+    </div>
+    <div class="overlay-close-row" id="imgbbUploadDoneRow" style="display:none;justify-content:flex-end;">
+      <button type="button" class="brick-btn small" id="imgbbUploadDoneBtn">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== EXPORT PICKER ===================== -->
 <div class="overlay" id="exportOverlay" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
   <div class="overlay-modal wide">
@@ -461,6 +491,7 @@
 <script src="js/study.js"></script>
 <script src="js/import-export.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/imgbb-backup.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

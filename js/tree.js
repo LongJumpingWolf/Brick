@@ -118,6 +118,7 @@ function renderTree(){
   const visible = tiles();
   if (visible.length) visible[0].tabIndex = 0;
   applySearchFilter();
+  if (typeof updateSettingsBadge === 'function') updateSettingsBadge(); // tree changes can add/remove images, keep the "images pending backup" badge current
 }
 
 /* ---------- roving-tabindex grid navigation ---------- */

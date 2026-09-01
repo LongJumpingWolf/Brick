@@ -147,10 +147,20 @@ function renderImgbbSection(){
   const key = loadImgbbKey();
   document.getElementById('imgbbKeyInput').value = key;
   const map = loadImageUrlMap();
-  const count = Object.keys(map).length;
-  document.getElementById('imgbbStatus').textContent = key
-    ? (count + ' image' + (count===1?'':'s') + ' backed up to ImgBB so far')
-    : 'No key set — occlusion images stay local-only';
+  const backedUpCount = Object.keys(map).length;
+  const pendingCount = getPendingBackupImageHashes().length;
+  const retryBtn = document.getElementById('retryImgbbBackupBtn');
+  if (key){
+    document.getElementById('imgbbStatus').textContent = pendingCount
+      ? (backedUpCount + ' image' + (backedUpCount===1?'':'s') + ' backed up so far — ' + pendingCount + ' still pending')
+      : (backedUpCount + ' image' + (backedUpCount===1?'':'s') + ' backed up to ImgBB');
+    retryBtn.style.display = pendingCount ? '' : 'none';
+  } else {
+    document.getElementById('imgbbStatus').textContent = pendingCount
+      ? ('No key set — ' + pendingCount + ' image' + (pendingCount===1?'':'s') + ' stored locally only. Adding a key backs them up automatically.')
+      : 'No key set — occlusion images stay local-only';
+    retryBtn.style.display = 'none';
+  }
 }
 
 function initSettingsScreen(){
@@ -183,8 +193,17 @@ function initSettingsScreen(){
 
   document.getElementById('saveImgbbKeyBtn').addEventListener('click', ()=>{
     const val = document.getElementById('imgbbKeyInput').value.trim();
+    const hadKeyBefore = !!loadImgbbKey();
     saveImgbbKey(val);
     announce(val ? 'ImgBB key saved' : 'ImgBB key cleared');
     renderImgbbSection();
+    updateSettingsBadge();
+    // "Once a key is added" means exactly that — the transition from no
+    // key to a real one. Re-saving an already-set key on every click
+    // would force this modal open repeatedly for anything that failed
+    // last time, which is naggy rather than helpful; retryPendingImgbbBackup()
+    // below gives an explicit, user-initiated way to retry those instead.
+    if (val && !hadKeyBefore) runMandatoryImgbbBackup();
   });
+  document.getElementById('retryImgbbBackupBtn').addEventListener('click', runMandatoryImgbbBackup);
 }

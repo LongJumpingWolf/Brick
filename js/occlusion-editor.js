@@ -27,9 +27,21 @@ let dragStartPct = null;     // {x,y} at pointerdown
 let dragOrigShape = null;    // snapshot of the shape being moved/resized
 let drawingPreview = null;   // {x,y,w,h} while actively drawing a new shape
 
+/* Two-finger scroll on touch devices: the stage has touch-action:none
+   so a single finger never fights the browser's own pan/zoom while
+   drawing/moving/resizing a shape — but that would also silently kill
+   the ability to scroll the page altogether on a phone, which is worse.
+   Tracking how many pointers are actually down lets a second finger
+   cancel whatever single-finger action was mid-flight and hand off to
+   a manually-computed scroll instead, so scrolling still works without
+   ever fighting the drawing gesture. */
+let activePointers = new Map(); // pointerId -> {x,y}
+let twoFingerScrollRef = null;  // {x,y} average of all active pointers, updated every move
+
 function openOcclusionEditor(folderId){
   editorTargetFolderId = folderId;
   editorImgHash = null; editorShapes = []; editorTool = 'rect'; editorMode = 'hide-all'; selectedShapeId = null;
+  activePointers = new Map(); twoFingerScrollRef = null; // stale multi-touch tracking shouldn't leak into a fresh session
   document.getElementById('editorUploadStep').style.display = '';
   document.getElementById('editorMaskStep').style.display = 'none';
   document.getElementById('scrollNameInput').value = '';
@@ -175,11 +187,30 @@ function renderShapeList(){
 }
 
 /* ---------- pointer interaction: draw / select / move / resize ---------- */
+function averagePointerPosition(){
+  const pts = Array.from(activePointers.values());
+  return {
+    x: pts.reduce((sum,p)=>sum+p.x, 0) / pts.length,
+    y: pts.reduce((sum,p)=>sum+p.y, 0) / pts.length
+  };
+}
+function cancelSingleFingerAction(){
+  dragState = null; dragHandle = null; dragStartPct = null; dragOrigShape = null; drawingPreview = null;
+  renderEditorShapes();
+}
 function initOcclusionEditor(){
   const stage = document.getElementById('ioStage');
 
   stage.addEventListener('pointerdown', (e)=>{
     if (!editorImgHash) return;
+    activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (activePointers.size >= 2){
+      // A second finger just landed — hand off to manual scroll mode,
+      // abandoning whatever single-finger draw/move/resize was mid-flight.
+      cancelSingleFingerAction();
+      twoFingerScrollRef = averagePointerPosition();
+      return;
+    }
     try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported — degrade gracefully */ }
     const p = stagePct(e.clientX, e.clientY);
     const handleEl = e.target.closest('.io-handle');
@@ -213,6 +244,15 @@ function initOcclusionEditor(){
   });
 
   stage.addEventListener('pointermove', (e)=>{
+    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (activePointers.size >= 2){
+      const avg = averagePointerPosition();
+      if (twoFingerScrollRef){
+        window.scrollBy(0, -(avg.y - twoFingerScrollRef.y));
+      }
+      twoFingerScrollRef = avg;
+      return;
+    }
     if (!dragState) return;
     const p = stagePct(e.clientX, e.clientY);
 
@@ -251,7 +291,10 @@ function initOcclusionEditor(){
     }
   });
 
-  stage.addEventListener('pointerup', ()=>{
+  stage.addEventListener('pointerup', (e)=>{
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) twoFingerScrollRef = null;
+    if (activePointers.size >= 1) return; // still mid a multi-finger gesture — don't finalize a shape from a leftover finger lifting
     let justDrewShapeId = null;
     if (dragState === 'drawing' && drawingPreview){
       if (drawingPreview.w >= 2 && drawingPreview.h >= 2){
@@ -271,7 +314,11 @@ function initOcclusionEditor(){
       if (hintInput) hintInput.focus();
     }
   });
-  stage.addEventListener('pointercancel', ()=>{ dragState = null; drawingPreview = null; renderEditorShapes(); });
+  stage.addEventListener('pointercancel', (e)=>{
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) twoFingerScrollRef = null;
+    cancelSingleFingerAction();
+  });
 
   document.getElementById('uploadZone').addEventListener('click', ()=> document.getElementById('fileInput').click());
   document.getElementById('fileInput').addEventListener('change', (e)=>{

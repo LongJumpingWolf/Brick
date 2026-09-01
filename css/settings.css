@@ -30,3 +30,15 @@
 .export-row input{margin-right:7px;vertical-align:middle;}
 .export-folder-row{font-weight:600;}
 .export-meta{color:var(--ink-soft);font-size:11px;font-family:'IBM Plex Mono',monospace;}
+
+/* ---------- ImgBB mandatory backup modal ---------- */
+.imgbb-progress-track{height:10px;border-radius:6px;background:var(--mortar);overflow:hidden;margin-bottom:8px;}
+.imgbb-progress-fill{height:100%;background:var(--clay);border-radius:6px;transition:width .3s ease;}
+.imgbb-progress-row{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+
+/* ---------- settings badge: a standing notification, not a popup ---------- */
+.settings-badge-dot{
+  position:absolute; top:5px; right:5px;
+  width:9px; height:9px; border-radius:50%;
+  background:var(--clay); box-shadow:0 0 0 2px var(--paper);
+}

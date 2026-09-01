@@ -8,13 +8,32 @@
   --amber:#D89A3E; --amber-dark:#A96F22;
   --ink:#2B2420; --ink-soft:#7A6E5F;
   --paper:#FBF7EE;
+  --cement:#A8ACA6; --cement-dark:#6E7268; --cement-darker:#4A4D46;
   --shadow: 0 1px 2px rgba(43,36,32,.08), 0 6px 16px rgba(43,36,32,.10);
   --shadow-lg: 0 12px 30px rgba(43,36,32,.20), 0 3px 8px rgba(43,36,32,.10);
   --noise: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIj4KPGZpbHRlciBpZD0ibiI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuODUiIG51bU9jdGF2ZXM9IjIiIHN0aXRjaFRpbGVzPSJzdGl0Y2giIHJlc3VsdD0idCIvPjxmZUNvbG9yTWF0cml4IGluPSJ0IiB0eXBlPSJzYXR1cmF0ZSIgdmFsdWVzPSIwIi8+PC9maWx0ZXI+CjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNuKSIvPgo8L3N2Zz4=");
 }
+
+/* Cement Mode theme — a real visual shift, not just a small button
+   tint you can miss and then be confused by why the tile counts
+   changed. Background cools toward grey, and Brick tiles specifically
+   pick up the same concrete tones as the cinder-block icon itself, so
+   the whole Wall visibly reads as "in cemented-only view" at a glance. */
+body.cement-mode-active{
+  --wash:#E7E4DC; --paper:#F2F0EA;
+}
+body.cement-mode-active .tile.brick-tile{ background-color:var(--cement-dark); }
+body.cement-mode-active .tile.brick-tile .tile-icon{ color:rgba(255,255,255,.8); }
+
+/* The Cement MODE toggle only makes sense while browsing the Wall —
+   showing it alongside the Study screen's own per-card Cement button
+   (same icon, different meaning) read as two confusing near-duplicate
+   rows. Hide it everywhere except the Wall screen. */
+body:not(.on-wall-screen) #cementModeBtn{ display:none; }
+
 *{box-sizing:border-box;}
 html,body{height:100%;}
-body{ margin:0;color:var(--ink);font-family:'IBM Plex Sans',sans-serif;background:var(--wash); }
+body{ margin:0;color:var(--ink);font-family:'IBM Plex Sans',sans-serif;background:var(--wash);transition:background-color .25s ease; }
 button{font-family:inherit;cursor:pointer;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 ::selection{background:var(--clay);color:#fff;}

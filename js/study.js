@@ -32,7 +32,71 @@ function openBrickPreview(deckId){
     document.getElementById('statNew').textContent = isNew;
   }
   resetLaunch();
+  renderResumeBanner();
   showScreen('screenPreview');
+}
+
+/* ---------- paused-session resume banner ----------
+   Only ever one paused session at a time (a single global slot, same
+   simplification Kardex's own pending-session system makes) — if it
+   belongs to whichever brick you're now previewing, offer to pick it
+   back up instead of silently only ever offering "start fresh". */
+function renderResumeBanner(){
+  const banner = document.getElementById('resumeBanner');
+  const snap = loadPendingSession();
+  if (!snap || snap.deckId !== previewDeckId){ banner.style.display = 'none'; return; }
+  const deck = nodeById(snap.deckId);
+  const stillValidIds = deck ? snap.order.filter(id => deck.cards.some(c => c.id === id)) : [];
+  if (!deck || !stillValidIds.length){
+    clearPendingSession();
+    banner.style.display = 'none';
+    return;
+  }
+  const left = stillValidIds.length - Math.min(snap.pos, stillValidIds.length - 1);
+  document.getElementById('resumeBannerText').textContent =
+    'Paused — ' + left + ' card' + (left===1?'':'s') + ' left in this session.';
+  banner.style.display = '';
+}
+function resumeSession(){
+  const snap = loadPendingSession();
+  if (!snap) return;
+  const deck = nodeById(snap.deckId);
+  if (!deck){ clearPendingSession(); renderResumeBanner(); announce('That brick no longer exists — nothing to resume.'); return; }
+  const validOrder = snap.order.filter(id => deck.cards.some(c => c.id === id));
+  if (!validOrder.length){ clearPendingSession(); renderResumeBanner(); announce('Those cards no longer exist — nothing to resume.'); return; }
+  const pos = Math.min(snap.pos, validOrder.length - 1);
+  session = {
+    deckId: snap.deckId, order: validOrder, pos,
+    revealed:false, timedOutThisAttempt:false, remaining:0, running:false, tickId:null,
+    correct: snap.correct || 0, missed: snap.missed || 0,
+    hintsEnabled: !!snap.hintsEnabled
+  };
+  showScreen('screenStudy');
+  renderStudyCard();
+}
+function discardPendingSession(){
+  clearPendingSession();
+  renderResumeBanner();
+  announce('Discarded the paused session.');
+}
+
+/* Snapshot the resumable parts of the session — deliberately NOT the
+   live timer/tickId/revealed state, which aren't meaningful to restore
+   (resuming always shows a fresh, unrevealed front — a safe default
+   either way). Called on every card transition AND as a safety net on
+   pagehide/visibilitychange, so a hard tab-close or the phone locking
+   mid-review still leaves a checkpoint from at most one card ago. */
+function snapshotPendingSession(){
+  if (!session) return;
+  savePendingSession({
+    deckId: session.deckId,
+    order: session.order,
+    pos: session.pos,
+    correct: session.correct,
+    missed: session.missed,
+    hintsEnabled: session.hintsEnabled,
+    savedAt: Date.now()
+  });
 }
 
 let launchArmed = false, launchTimeoutId = null;
@@ -44,7 +108,7 @@ function resetLaunch(){
   document.getElementById('launchCaption').classList.remove('showing');
 }
 
-let session = null; // { deckId, order:[cardId...], pos, revealed, timedOutThisAttempt, remaining, running, tickId, correct, missed }
+let session = null; // { deckId, order:[cardId...], pos, revealed, timedOutThisAttempt, remaining, running, tickId, correct, missed, hintsEnabled }
 
 function beginStudy(){
   const deck = nodeById(previewDeckId);
@@ -58,6 +122,7 @@ function beginStudy(){
     order = deck.cards.filter(c => isCardDue(c.id, srsMap)).map(c => c.id);
     if (!order.length) order = deck.cards.map(c => c.id);
   }
+  clearPendingSession(); // only one paused-session slot exists — starting fresh (on any deck) always supersedes it
   // hintsEnabled lives on the session, initialized ONCE here — not
   // reset per card in renderStudyCard() — so pressing H sticks for the
   // rest of this session's cards until you press it again, rather than
@@ -100,6 +165,7 @@ async function renderStudyCard(){
   paintCardContent(c);
   session.remaining = studyTimePerCard;
   startOrResumeTimer();
+  snapshotPendingSession();
 }
 /* Dispatches to the right renderer by card type — occlusion draws mask
    overlays on an image; basic/cloze show plain front/back text. Both
@@ -298,6 +364,7 @@ function gradeCurrent(goodTapped){
 function finishStudy(){
   stopAnyStudyTimer();
   saveTreeNow(); // persists any timeouts/tough tags picked up this run
+  clearPendingSession(); // completed — nothing left to resume
   document.getElementById('doneSummary').textContent =
     session.correct + ' good · ' + session.missed + ' to review again · ' + session.order.length + ' cards';
   showScreen('screenDone');
@@ -327,7 +394,17 @@ function initStudyScreens(){
   document.getElementById('gradeGood').addEventListener('click', ()=>gradeCurrent(true));
   document.getElementById('cementBtn').addEventListener('click', ()=>{ if (session) toggleCement(); });
   document.getElementById('hintsBtn').addEventListener('click', ()=>{ if (session) toggleHints(); });
-  document.getElementById('studyBackBtn').addEventListener('click', ()=>{ stopAnyStudyTimer(); showScreen('screenWall'); renderTree(); });
+  document.getElementById('studyBackBtn').addEventListener('click', ()=>{
+    // Voluntary pause: leaving mid-session does NOT discard progress —
+    // the most recent renderStudyCard() already snapshotted this exact
+    // position, so this is just an extra explicit checkpoint on top.
+    if (session) snapshotPendingSession();
+    stopAnyStudyTimer();
+    showScreen('screenWall');
+    renderTree();
+  });
+  document.getElementById('resumeSessionBtn').addEventListener('click', resumeSession);
+  document.getElementById('discardSessionBtn').addEventListener('click', discardPendingSession);
 
   document.getElementById('restartScrollBtn').addEventListener('click', beginStudy);
   document.getElementById('doneBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
@@ -349,4 +426,14 @@ function initStudyScreens(){
       toggleHints();
     }
   });
+
+  // Involuntary closure safety net — a hard tab close, browser crash,
+  // or the phone locking mid-review doesn't fire any of the "leaving
+  // on purpose" handlers above. pagehide and visibilitychange are the
+  // two events that most reliably still fire in those cases (unlike
+  // beforeunload, which mobile browsers routinely skip), so both are
+  // wired to the same snapshot — redundant on desktop, meaningfully
+  // more reliable on mobile.
+  window.addEventListener('pagehide', ()=>{ if (session) snapshotPendingSession(); });
+  document.addEventListener('visibilitychange', ()=>{ if (document.hidden && session) snapshotPendingSession(); });
 }

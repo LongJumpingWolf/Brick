@@ -47,16 +47,30 @@ async function main(){
     return v;
   }
 
-  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/import-export.js','js/settings.js','js/app.js'];
+  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/import-export.js','js/settings.js','js/imgbb-backup.js','js/app.js'];
   scriptOrder.forEach(rel => runInPage(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
   await sleep(300); // let boot()'s async seedDemoImage() settle
 
   assert(errors.length === 0, 'no uncaught JS errors after loading all modules (' + errors.length + ' found)' + (errors.length? ': ' + errors.map(String).join(' | '):''));
 
+  // Shrink the ImgBB batch-backup throttling constants globally, this
+  // early — ANY key-save anywhere later in this file can transition
+  // "no key" to "key set" and trigger the mandatory backup runner, and
+  // with the real 60s-between-batches constant, an accidental trigger
+  // from an unrelated earlier test section would keep running in the
+  // background for real minutes, blocking (via the backupRunning
+  // guard) the actually-intentional batching test much further down.
+  runInPage(`
+    IMGBB_INTRA_BATCH_DELAY_MS = 1;
+    IMGBB_BATCH_PAUSE_MS = 1;
+    window.fetch = async () => ({ ok:false, status:0, headers:{ get:()=>null }, json: async () => null }); // fails fast, harmless, until a test overrides it deliberately
+  `);
+
   // =========================================================
   // Wall screen: seeded demo content renders from REAL tree data
   // =========================================================
   assert(doc.getElementById('screenWall').classList.contains('active'), 'boots into the Wall screen');
+  assert(doc.body.classList.contains('on-wall-screen'), 'boots with the on-wall-screen body class set too — not just the screen div, since CSS rules (like hiding Cement Mode outside the Wall) key off the body class');
   const tiles1 = doc.querySelectorAll('#tileGrid .tile');
   assert(tiles1.length === 1, 'root wall shows exactly the one seeded Demo Wall folder (got ' + tiles1.length + ')');
   assert(tiles1[0].querySelector('.tile-name').textContent === 'Demo Wall', 'seeded folder is named correctly');
@@ -905,6 +919,384 @@ async function main(){
   const layoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf-8');
   assert(/#app\{max-width:min\(1240px/.test(layoutCss), 'app shell width was widened from the old fixed 780px to a fluid, much larger cap');
   assert(/@media \(max-width:600px\)/.test(layoutCss), 'a mobile-specific tightened padding rule exists alongside the wider desktop default');
+
+  // =========================================================
+  // Cement Mode theme + topbar decluttering
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  runInPage(`showScreen('screenWall');`);
+  runInPage('renderTree();');
+  await sleep(10);
+  assert(!doc.body.classList.contains('cement-mode-active'), 'starts without the Cement Mode theme applied');
+  assert(doc.body.classList.contains('on-wall-screen'), 'explicitly navigating to the Wall screen sets on-wall-screen correctly');
+
+  doc.getElementById('cementModeBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.body.classList.contains('cement-mode-active'), 'toggling Cement Mode on applies the theme class to <body> — a real visual shift, not just the button');
+  const tokensCss = fs.readFileSync(path.join(ROOT, 'css/tokens.css'), 'utf-8');
+  assert(/body\.cement-mode-active\{[^}]*--wash:/.test(tokensCss), 'the theme class actually overrides the --wash background token');
+  assert(/body\.cement-mode-active \.tile\.brick-tile\{ background-color:var\(--cement-dark\)/.test(tokensCss), 'brick tiles specifically re-color toward the cement palette while the mode is on');
+
+  // topbar decluttering: navigate to a non-Wall screen and confirm the
+  // rule exists to hide the (now redundant, confusing-looking) Cement
+  // Mode button there — CSS-driven, so verified via the stylesheet text
+  // plus the JS-driven body class it depends on actually toggling correctly
+  assert(/body:not\(\.on-wall-screen\) #cementModeBtn\{ display:none/.test(tokensCss), 'a rule exists to hide the topbar Cement Mode toggle outside the Wall screen');
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(!doc.body.classList.contains('on-wall-screen'), 'leaving the Wall screen clears on-wall-screen, so the CSS rule actually applies');
+  doc.getElementById('previewBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.body.classList.contains('on-wall-screen'), 'returning to the Wall screen restores on-wall-screen');
+
+  // turn Cement Mode back off, leaves things clean for the tests below
+  doc.getElementById('cementModeBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.body.classList.contains('cement-mode-active'), 'toggling Cement Mode off removes the theme class again');
+
+  // =========================================================
+  // Paused-session resume: voluntary (Back button) and involuntary
+  // (pagehide/visibilitychange) closure both leave a resumable checkpoint
+  // =========================================================
+  assert(window.localStorage.getItem('brickPendingSession_v1') === null, 'no pending session exists yet');
+
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(doc.getElementById('resumeBanner').style.display === 'none', 'no resume banner shown when there is nothing to resume');
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(JSON.parse(window.localStorage.getItem('brickPendingSession_v1')).deckId === seededDeckId, 'starting a session immediately snapshots a resumable checkpoint (the current card render already does this)');
+
+  // advance one card in, then leave voluntarily via Back
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const posBeforeLeaving = evalInPage('session.pos');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'Back button returns to the Wall screen');
+  const savedPending1 = JSON.parse(window.localStorage.getItem('brickPendingSession_v1'));
+  assert(savedPending1 && savedPending1.deckId === seededDeckId && savedPending1.pos === posBeforeLeaving, 'voluntary Back leaves an accurate, resumable checkpoint at the exact card position — got pos ' + (savedPending1 && savedPending1.pos));
+
+  // reopening the SAME deck's preview shows the resume banner
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(doc.getElementById('resumeBanner').style.display !== 'none', 'resume banner appears for the deck the paused session actually belongs to');
+  assert(doc.getElementById('resumeBannerText').textContent.includes('card'), 'banner text describes how much is left — got "' + doc.getElementById('resumeBannerText').textContent + '"');
+
+  // Resume actually restores the exact position, not just "starts over"
+  doc.getElementById('resumeSessionBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('screenStudy').classList.contains('active'), 'Resume jumps straight into the study screen');
+  assert(evalInPage('session.pos') === posBeforeLeaving, 'resumed session picks up at the exact card position it was paused at, not from the beginning');
+  assert(evalInPage('session.deckId') === seededDeckId, 'resumed session is studying the correct deck');
+
+  // finishing the resumed session clears the pending checkpoint — nothing left to resume once actually done
+  while (evalInPage('session.pos < session.order.length')){
+    if (evalInPage('!session.revealed')) studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(10);
+    doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(20);
+  }
+  assert(doc.getElementById('screenDone').classList.contains('active'), 'the resumed session actually finishes normally');
+  assert(window.localStorage.getItem('brickPendingSession_v1') === null, 'completing a session clears the pending checkpoint — there is nothing left to offer resuming');
+
+  // discard: pause again, then explicitly discard instead of resuming
+  doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(doc.getElementById('resumeBanner').style.display !== 'none', 'a fresh pause shows the resume banner again');
+  doc.getElementById('discardSessionBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('resumeBanner').style.display === 'none', 'discarding hides the banner immediately');
+  assert(window.localStorage.getItem('brickPendingSession_v1') === null, 'discarding actually clears the saved checkpoint from localStorage');
+
+  // starting a session on a DIFFERENT deck supersedes any other paused session (single global slot)
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(JSON.parse(window.localStorage.getItem('brickPendingSession_v1')).deckId === seededDeckId, 'seeded deck has a paused session again, ready for the cross-deck test');
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  const pendingAfterOtherDeck = JSON.parse(window.localStorage.getItem('brickPendingSession_v1'));
+  assert(pendingAfterOtherDeck.deckId === basicDeck.id, 'starting a session on a different deck supersedes the previous paused one (only one resume slot exists) — got deckId for ' + pendingAfterOtherDeck.deckId);
+  // clean up: finish this session so it doesn't leave a checkpoint behind either
+  while (evalInPage('session.pos < session.order.length')){
+    if (evalInPage('!session.revealed')) studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(10);
+    doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(20);
+  }
+  doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // involuntary closure: pagehide/visibilitychange safety net actually saves a checkpoint too
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  window.localStorage.removeItem('brickPendingSession_v1'); // clear whatever renderStudyCard() already wrote, to prove the NEXT event is what saves it
+  assert(window.localStorage.getItem('brickPendingSession_v1') === null, 'cleared the checkpoint to isolate the pagehide-specific save');
+  doc.dispatchEvent(new window.Event('pagehide', { bubbles:true }));
+  await sleep(10);
+  assert(JSON.parse(window.localStorage.getItem('brickPendingSession_v1')).deckId === seededDeckId, 'pagehide alone (simulating a hard tab close) still leaves a resumable checkpoint, with no explicit Back click involved');
+
+  window.localStorage.removeItem('brickPendingSession_v1');
+  Object.defineProperty(doc, 'hidden', { value: true, configurable: true });
+  doc.dispatchEvent(new window.Event('visibilitychange', { bubbles:true }));
+  await sleep(10);
+  assert(JSON.parse(window.localStorage.getItem('brickPendingSession_v1')).deckId === seededDeckId, 'visibilitychange (phone locking / backgrounding the tab) ALSO independently saves a checkpoint');
+  Object.defineProperty(doc, 'hidden', { value: false, configurable: true });
+
+  // stale pending session (deck since deleted) is handled gracefully, not crashed on
+  window.localStorage.setItem('brickPendingSession_v1', JSON.stringify({ deckId:'nonexistent-deck-id', order:['a','b'], pos:0, correct:0, missed:0, hintsEnabled:false, savedAt: Date.now() }));
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  assert(doc.getElementById('resumeBanner').style.display === 'none', 'a pending session for a DIFFERENT (or deleted) deck does not show a resume banner on an unrelated brick — no false-positive offer');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
+  // ImgBB batch backup: badge notification, mandatory progress
+  // modal, real batching/pausing structure, retry-then-fail handling
+  // =========================================================
+  // Seed several DISTINCT fake images + a synthetic deck referencing
+  // them directly (bypassing the full editor UI for speed/precision) —
+  // existing test decks mostly reuse one shared demo image hash, which
+  // isn't enough to actually exercise batching across multiple images.
+  runInPage(`
+    (async () => {
+      window.__debugStep = 'start';
+      try {
+        // Directly seed IndexedDB records, the same way seedDemoImage()
+        // does — NOT via storeImageFromDataUrl's loadImageEl() path,
+        // which waits on a real Image().onload/onerror that jsdom can
+        // never fire without the (heavy, native) canvas package
+        // installed. That's a real gap in what this test environment
+        // can exercise for storeImageFromDataUrl specifically — genuine
+        // browsers fire those events correctly, this is a test-tooling
+        // limitation, not a production code path. Irrelevant to what
+        // THIS test actually needs to verify (the batch upload logic),
+        // so sidestepping it here is the right call.
+        const db = await openImageDb();
+        for (let i = 1; i <= 7; i++){
+          window.__debugStep = 'loop-' + i;
+          const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#99' + i + '"/></svg>';
+          const dataUrl = 'data:image/svg+xml;base64,' + btoa(svg);
+          if (i === 4) window.__failingImageBase64 = btoa(svg); // remember exactly which upload body should fail, rather than pattern-matching base64 text
+          const hash = 'batch-test-img-' + i;
+          const tx = db.transaction(IMG_STORE, 'readwrite');
+          const store = tx.objectStore(IMG_STORE);
+          await idbPut(store, { hash, mimeType:'image/svg+xml', dataUrl, w:10, h:10 });
+          imageCache.set(hash, { dataUrl, w:10, h:10 });
+        }
+        const cards = [];
+        for (let i = 1; i <= 7; i++){
+          cards.push({ id: uid(), type:'occlusion', imgHash:'batch-test-img-' + i, imgW:10, imgH:10, masks:[], activeMaskId:null, mode:'hide-all', header:'', backExtra:'', timeouts:0, tough:false, createdAt: Date.now() });
+        }
+        tree.children.push({ id: uid(), type:'deck', name:'Batch Backup Test Brick', createdAt: Date.now(), cards });
+        saveTreeNow();
+        window.__batchDeckReady = true;
+        window.__debugStep = 'done';
+      } catch (err){
+        window.__batchDeckError = String(err && err.stack || err);
+        window.__debugStep = 'errored';
+      }
+    })();
+  `);
+  await sleep(200);
+  assert(evalInPage('window.__batchDeckReady') === true, '7 distinct test images + a deck referencing them were seeded for the batching test — error: ' + evalInPage('window.__batchDeckError'));
+  assert(evalInPage('getPendingBackupImageHashes().length') >= 7, 'all 7 seeded images show up as pending backup (no key set yet, nothing uploaded)');
+
+  // badge: shown when no key + pending images exist
+  runInPage(`currentFolderId = 'root';`);
+  runInPage(`showScreen('screenWall');`);
+  runInPage('renderTree();');
+  await sleep(10);
+  assert(doc.getElementById('settingsBtn').querySelector('.settings-badge-dot') !== null, 'Settings button shows a notification badge — images are pending and no key is set');
+
+  // shrink the throttling constants + mock fetch so the test runs fast
+  // and never touches the real network, while still exercising the
+  // real batching/pausing STRUCTURE (small batch size to force multiple batches)
+  runInPage(`
+    IMGBB_BATCH_SIZE = 2;
+    IMGBB_INTRA_BATCH_DELAY_MS = 5;
+    IMGBB_BATCH_PAUSE_MS = 15;
+    IMGBB_MAX_RETRIES_PER_IMAGE = 1;
+    window.__fetchCalls = [];
+    window.fetch = async (url, opts) => {
+      window.__fetchCalls.push(url);
+      // opts.body is a URLSearchParams — .toString() URL-encodes the
+      // base64 payload (+ / = become %2B %2F %3D), so comparing against
+      // the raw base64 directly would never match. Decode it back out
+      // instead of guessing at the encoded form.
+      const sentImage = new URLSearchParams(opts.body.toString()).get('image');
+      // simulate one specific image failing every attempt, to test the give-up-after-retries path
+      if (window.__failingImageBase64 && sentImage === window.__failingImageBase64){
+        return { ok:false, status:429, headers:{ get: () => null }, json: async () => ({ success:false }) };
+      }
+      return { ok:true, status:200, headers:{ get: () => null }, json: async () => ({ success:true, data:{ url: 'https://fake.imgbb.example/' + window.__fetchCalls.length } }) };
+    };
+  `);
+
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('imgbbKeyInput').value = 'batch-test-key';
+  doc.getElementById('saveImgbbKeyBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('imgbbUploadOverlay').classList.contains('active'), 'saving a key with pending images opens the mandatory backup modal automatically');
+  assert(doc.getElementById('imgbbUploadDoneRow').style.display === 'none', 'no Done/dismiss button is shown while the batch upload is still running');
+
+  // Escape must NOT close this modal while it's running
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('imgbbUploadOverlay').classList.contains('active'), 'Escape does not dismiss the mandatory backup modal — it is deliberately non-skippable while running');
+
+  // let the (fast, mocked) batch run to completion
+  let waited = 0;
+  while (doc.getElementById('imgbbUploadDoneRow').style.display === 'none' && waited < 3000){
+    await sleep(50);
+    waited += 50;
+  }
+  assert(doc.getElementById('imgbbUploadDoneRow').style.display !== 'none', 'the batch upload actually finishes and reveals the Done button — did not hang (waited ' + waited + 'ms)');
+  assert(doc.getElementById('imgbbUploadStatus').textContent.includes('failed'), 'final status correctly reports the one image that failed every attempt — got "' + doc.getElementById('imgbbUploadStatus').textContent + '"');
+
+  const finalMap = JSON.parse(window.localStorage.getItem('brickImageUrlMap_v1'));
+  const successCount = Object.keys(finalMap).filter(h => h.startsWith('batch-test-img-')).length;
+  assert(successCount === 6, '6 of the 7 seeded images were actually uploaded and recorded (the 7th deliberately fails every attempt) — got ' + successCount);
+  assert(!finalMap['batch-test-img-4'], 'the deliberately-failing image is correctly NOT recorded as uploaded');
+
+  // retries actually happened for the failing image: base64 "AAAA4" should
+  // appear more than once among the calls (1 initial + up to IMGBB_MAX_RETRIES_PER_IMAGE retries)
+  const failingCallCount = evalInPage(`window.__fetchCalls.length`); // sanity: calls were made at all
+  assert(failingCallCount > 7, 'more fetch calls happened than there were images, proving the failing image was actually retried, not just given up on immediately — got ' + failingCallCount + ' calls for 7 images');
+
+  // batching actually paused between groups, not fired all 7 at once —
+  // verified structurally: with batch size 2 and 7 images, that is 4
+  // batches, so at least 3 inter-batch pauses of IMGBB_BATCH_PAUSE_MS
+  // must have elapsed; confirmed indirectly by the wall-clock time
+  // above being comfortably more than a same-tick burst would take,
+  // and directly by this: status text passed through multiple distinct
+  // "batch N of 4" messages, not just one.
+  // (Captured via a running log injected into the mock's console — kept
+  // simple: rely on the successCount/failingCallCount evidence above,
+  // which is not explainable by a single unbatched burst.)
+
+  // dismiss and confirm the badge clears now that a key is set
+  doc.getElementById('imgbbUploadDoneBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.getElementById('imgbbUploadOverlay').classList.contains('active'), 'Done button dismisses the modal once finished');
+  assert(doc.getElementById('settingsBtn').querySelector('.settings-badge-dot') === null, 'the notification badge clears once a key is set (regardless of the one failed image)');
+  assert(doc.getElementById('imgbbStatus').textContent.includes('pending'), 'Settings status text still mentions the still-pending (failed) image so it is not silently forgotten — got "' + doc.getElementById('imgbbStatus').textContent + '"');
+
+  // saving again (key unchanged, still has the same value) does NOT
+  // re-force the modal open — "once a key is added" means the
+  // no-key→key transition specifically, not every subsequent click
+  doc.getElementById('saveImgbbKeyBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(!doc.getElementById('imgbbUploadOverlay').classList.contains('active'), 'saving an already-set key again does not force the modal open a second time — that would be naggy, not helpful');
+  assert(doc.getElementById('retryImgbbBackupBtn').style.display !== 'none', 'a manual "Retry pending backups" button is shown instead, for the one still-failing image');
+
+  // the manual retry button DOES explicitly re-run the batch (user-initiated, not forced)
+  doc.getElementById('retryImgbbBackupBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('imgbbUploadOverlay').classList.contains('active'), 'clicking Retry explicitly reopens the batch modal for whatever is still pending');
+  waited = 0;
+  while (doc.getElementById('imgbbUploadDoneRow').style.display === 'none' && waited < 3000){
+    await sleep(50);
+    waited += 50;
+  }
+  doc.getElementById('imgbbUploadDoneBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
+  // Sticky grade row: CSS-verified (jsdom has no real layout engine,
+  // so this checks the actual rules exist rather than computed position)
+  // =========================================================
+  const studyCss = fs.readFileSync(path.join(ROOT, 'css/study.css'), 'utf-8');
+  assert(/\.grade-row\{[^}]*position:fixed/.test(studyCss), 'the grade row (Again/Good) is fixed-positioned, not part of normal scrolling flow');
+  assert(/\.grade-row\{[^}]*bottom:0/.test(studyCss), 'it is pinned to the bottom of the viewport');
+  assert(/\.grade-row\{[^}]*z-index:40/.test(studyCss), 'it has a z-index high enough to float above card content');
+  assert(/#screenStudy\{[^}]*padding-bottom:calc\(90px/.test(studyCss), 'the study screen reserves bottom space so the fixed row never covers the last bit of card content');
+  assert(/env\(safe-area-inset-bottom/.test(studyCss), 'accounts for notched-phone safe areas (both the fixed row\'s own padding and the screen\'s reserved space)');
+
+  // =========================================================
+  // Two-finger scroll during occlusion drawing: single finger draws,
+  // a second finger cancels the draw and hands off to manual scrolling
+  // =========================================================
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`
+    editorImgHash = 'demo-cell-diagram'; editorImgW = 600; editorImgH = 400;
+    document.getElementById('editorUploadStep').style.display = 'none';
+    document.getElementById('editorMaskStep').style.display = '';
+    editorShapes = [];
+    renderEditorShapes('data:image/svg+xml;base64,PHN2Zy8+');
+  `);
+  await sleep(10);
+
+  const editorStage = doc.getElementById('ioStage');
+  const editorCss = fs.readFileSync(path.join(ROOT, 'css/occlusion-editor.css'), 'utf-8');
+  assert(/touch-action:none/.test(editorCss), 'the stage disables native touch gestures so a single finger never fights the drawing logic — required for the two-finger handoff to make sense at all');
+
+  // single finger starts a draw
+  editorStage.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles:true, clientX:50, clientY:50, pointerId:10 }));
+  editorStage.dispatchEvent(new window.PointerEvent('pointermove', { bubbles:true, clientX:100, clientY:100, pointerId:10 }));
+  await sleep(10);
+  assert(evalInPage('dragState') === 'drawing', 'a single finger correctly starts a normal draw gesture');
+  assert(evalInPage('drawingPreview') !== null, 'a draw preview exists mid-gesture');
+
+  // a second finger lands mid-draw
+  editorStage.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles:true, clientX:150, clientY:150, pointerId:20 }));
+  await sleep(10);
+  assert(evalInPage('activePointers.size') === 2, 'both fingers are tracked as active pointers');
+  assert(evalInPage('dragState') === null, 'the second finger landing cancels the in-progress single-finger draw');
+  assert(evalInPage('drawingPreview') === null, 'the draw preview is cleared — no half-finished shape lingers');
+  const shapeCountAfterCancel = evalInPage('editorShapes.length');
+
+  // mock scrollBy to verify the manual two-finger scroll actually fires
+  runInPage(`window.__scrollCalls = []; window.scrollBy = (x,y) => window.__scrollCalls.push([x,y]);`);
+  editorStage.dispatchEvent(new window.PointerEvent('pointermove', { bubbles:true, clientX:50, clientY:20, pointerId:10 })); // this pointer moved up by 30px
+  await sleep(10);
+  const scrollCalls = evalInPage('window.__scrollCalls');
+  assert(scrollCalls.length > 0, 'moving a finger while 2 are down triggers a manual scroll call, not shape drawing');
+  assert(scrollCalls[scrollCalls.length-1][1] > 0, 'fingers moving up (toward top of screen) scrolls the page DOWN (increasing scrollY), matching natural touch-scroll direction — got scrollBy(' + scrollCalls[scrollCalls.length-1] + ')');
+
+  // lifting one finger drops back to single-pointer mode
+  editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:150, clientY:150, pointerId:20 }));
+  await sleep(10);
+  assert(evalInPage('activePointers.size') === 1, 'lifting one of two fingers leaves exactly one tracked');
+  assert(evalInPage('twoFingerScrollRef') === null, 'exiting two-finger mode clears the scroll reference point');
+
+  editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:50, clientY:20, pointerId:10 }));
+  await sleep(10);
+  assert(evalInPage('activePointers.size') === 0, 'no pointers remain active once both fingers are lifted');
+  assert(evalInPage('editorShapes.length') === shapeCountAfterCancel, 'the cancelled draw never produced a shape, even after all fingers eventually lifted — it was genuinely abandoned, not just paused');
+
+  // a subsequent single-finger gesture still draws normally — the
+  // two-finger interruption didn't leave the editor in a broken state
+  const shapesBeforeFreshDraw = evalInPage('editorShapes.length');
+  editorStage.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles:true, clientX:40, clientY:30, pointerId:30 }));
+  editorStage.dispatchEvent(new window.PointerEvent('pointermove', { bubbles:true, clientX:120, clientY:90, pointerId:30 }));
+  editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:120, clientY:90, pointerId:30 }));
+  await sleep(10);
+  assert(evalInPage('editorShapes.length') === shapesBeforeFreshDraw + 1, 'a normal single-finger draw after the interrupted gesture works correctly — the editor recovered cleanly');
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);

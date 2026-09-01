@@ -13,12 +13,19 @@ function escapeHtml(s){ return (s == null ? '' : String(s)).replace(/&/g,'&amp;'
    work in Kardex's own Tough Mode — the Wall stays exactly the same
    (every folder and brick still there, still navigable), but studying
    a brick only pulls its cemented cards, and tiles show a cemented
-   count instead of the usual new/due breakdown while it's on. ---------- */
+   count instead of the usual new/due breakdown while it's on. A real
+   theme shift (cooler background, grey brick tiles) makes it obvious
+   at a glance that the mode is on, not just a small button tint you
+   can miss and then get confused by the filtered counts. ---------- */
 let cementMode = localStorage.getItem('brickCementMode') === 'true';
+function applyCementModeTheme(){
+  document.body.classList.toggle('cement-mode-active', cementMode);
+  document.getElementById('cementModeBtn').classList.toggle('active', cementMode);
+}
 function toggleCementMode(){
   cementMode = !cementMode;
   localStorage.setItem('brickCementMode', String(cementMode));
-  document.getElementById('cementModeBtn').classList.toggle('active', cementMode);
+  applyCementModeTheme();
   announce(cementMode ? 'Cement Mode on — bricks now show only cemented cards' : 'Cement Mode off');
   renderTree();
 }
@@ -27,6 +34,13 @@ function toggleCementMode(){
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // The Cement Mode toggle is a Wall-browsing concept — showing it
+  // alongside the Study screen's own per-card Cement button (same
+  // cinder-block icon, different meaning) read as two confusingly
+  // similar rows stacked on top of each other. It only makes sense
+  // to show one Cement control at a time, and the per-card one is
+  // the relevant one once you're actually studying.
+  document.body.classList.toggle('on-wall-screen', id === 'screenWall');
 }
 
 /* ---------- status live region + toast ---------- */
@@ -101,7 +115,7 @@ function initShortcutsOverlay(){
 function initGlobalHotkeys(){
   const searchInput = document.getElementById('searchInput');
   document.getElementById('cementModeBtn').addEventListener('click', toggleCementMode);
-  document.getElementById('cementModeBtn').classList.toggle('active', cementMode); // reflect a persisted-on state at boot
+  applyCementModeTheme(); // reflect a persisted-on state (theme + button) at boot, not just the button
   document.addEventListener('keydown', (e)=>{
     // A field left focused on a DIFFERENT, currently-hidden screen (the
     // editor's fields, say) stays document.activeElement forever once
@@ -120,6 +134,10 @@ function initGlobalHotkeys(){
     const onWallScreen = document.getElementById('screenWall').classList.contains('active');
 
     if (e.key === 'Escape'){
+      // The mandatory ImgBB backup modal is deliberately not
+      // dismissable — Escape must not close it while a batch upload
+      // is actually running.
+      if (anyOverlayOpen && anyOverlayOpen.id === 'imgbbUploadOverlay') return;
       if (anyOverlayOpen){ closeOverlay(anyOverlayOpen.id); return; }
       if (menuOpen){ closeTileMenu(); return; }
       if (document.activeElement === searchInput){ searchInput.blur(); return; }
@@ -136,11 +154,13 @@ function initGlobalHotkeys(){
 /* ---------- boot ---------- */
 async function boot(){
   try { await seedDemoImage(); } catch (err){ console.warn('Demo seed image failed (non-fatal)', err); }
+  document.body.classList.add('on-wall-screen'); // the initial screen is Wall, set directly in the HTML — showScreen() is never called for it, so this has to be set explicitly here too
   initTreeScreen();
   initOcclusionEditor();
   initBasicClozeEditor();
   initStudyScreens();
   initSettingsScreen();
+  initImgbbBackup();
   initShortcutsOverlay();
   initGlobalHotkeys();
 }

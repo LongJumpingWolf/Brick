@@ -7,6 +7,7 @@
 
 const TREE_KEY = 'brickTree_v1';
 const LOG_KEY  = 'brickReviewLog_v1';
+const PENDING_SESSION_KEY = 'brickPendingSession_v1';
 const TRASH_KEY = 'brickTrash_v1';
 const IMGBB_KEY_STORAGE = 'brickImgbbKey';
 const IMAGE_URL_MAP_KEY = 'brickImageUrlMap_v1';
@@ -189,6 +190,25 @@ function saveLog(log){
   catch (err){ console.warn('Could not save review log', err); return false; }
 }
 
+/* ---------- pending (paused) study session ----------
+   Covers both voluntary pausing (tapping Back mid-session) and
+   involuntary closure (tab close, crash, phone locking the browser,
+   navigating away) — the session snapshot is written on every card
+   transition AND on pagehide, so whichever way the app actually stops
+   running, there's a resumable checkpoint from at most one card ago. */
+function loadPendingSession(){
+  try { const raw = localStorage.getItem(PENDING_SESSION_KEY); return raw ? JSON.parse(raw) : null; }
+  catch (err){ return null; }
+}
+function savePendingSession(snapshot){
+  try { localStorage.setItem(PENDING_SESSION_KEY, JSON.stringify(snapshot)); return true; }
+  catch (err){ console.warn('Could not save pending session', err); return false; }
+}
+function clearPendingSession(){
+  try { localStorage.removeItem(PENDING_SESSION_KEY); return true; }
+  catch (err){ return false; }
+}
+
 /* ---------- recycle bin ---------- */
 function loadTrash(){
   try { const raw = localStorage.getItem(TRASH_KEY); return raw ? JSON.parse(raw) : []; }
@@ -222,13 +242,21 @@ function saveImageUrlMap(map){
    Acceptable for a personal single-user key, not for anything shared;
    flagged clearly in the Settings screen and README. */
 async function uploadImageToImgbb(hash, dataUrl){
+  const result = await uploadImageToImgbbDetailed(hash, dataUrl);
+  return result.url;
+}
+/* Same upload, but reports enough detail (status code, Retry-After) for
+   the batch backup runner's retry/backoff logic — the plain version
+   above stays a simple null-or-url contract for anything that just
+   wants a fire-and-forget single upload. */
+async function uploadImageToImgbbDetailed(hash, dataUrl){
   const key = loadImgbbKey();
-  if (!key) return null;
+  if (!key) return { ok:false, status:0, url:null, retryAfter:null, reason:'no-key' };
   const map = loadImageUrlMap();
-  if (map[hash]) return map[hash]; // already uploaded
+  if (map[hash]) return { ok:true, status:200, url:map[hash], retryAfter:null, reason:'already-uploaded' };
   try {
     const base64 = (dataUrl.split(',')[1]) || '';
-    if (!base64) return null;
+    if (!base64) return { ok:false, status:0, url:null, retryAfter:null, reason:'bad-data-url' };
     const res = await fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(key), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -238,11 +266,12 @@ async function uploadImageToImgbb(hash, dataUrl){
     if (res.ok && data && data.success && data.data && data.data.url){
       map[hash] = data.data.url;
       saveImageUrlMap(map);
-      return data.data.url;
+      return { ok:true, status:res.status, url:data.data.url, retryAfter:null, reason:'uploaded' };
     }
-    return null;
+    const retryAfterHeader = res.headers && res.headers.get ? res.headers.get('Retry-After') : null;
+    return { ok:false, status:res.status, url:null, retryAfter: retryAfterHeader ? parseInt(retryAfterHeader,10)*1000 : null, reason:'http-'+res.status };
   } catch (err){
     console.warn('ImgBB upload failed', err);
-    return null;
+    return { ok:false, status:0, url:null, retryAfter:null, reason:'network-error' };
   }
 }

@@ -1,3 +1,9 @@
+#screenStudy{
+  /* Room at the bottom so the now-fixed grade row never sits on top of
+     the last bit of card content — sized generously enough for the
+     row's own padding plus a real device's home-indicator safe area. */
+  padding-bottom:calc(90px + env(safe-area-inset-bottom, 0px));
+}
 .study-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);}
 .study-title{flex:1;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .study-tool-btn{width:32px;height:32px;flex-shrink:0;}
@@ -82,7 +88,18 @@
 .tap-hint{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-soft);opacity:.65;text-transform:uppercase;letter-spacing:.05em;margin:0 0 18px;}
 .tap-hint.warn{opacity:1;color:var(--clay-dark);text-transform:none;letter-spacing:0;font-size:11px;}
 
-.grade-row{display:flex;gap:12px;transition:opacity .2s;}
+.grade-row{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:0; z-index:40;
+  width:min(1240px, 96vw);
+  box-sizing:border-box;
+  padding:14px 24px calc(14px + env(safe-area-inset-bottom, 0px));
+  margin:0;
+  background:var(--wash);
+  box-shadow:0 -6px 18px rgba(43,36,32,.14);
+  display:flex; gap:12px; transition:opacity .2s;
+}
+@media (max-width:600px){ .grade-row{ padding-left:14px; padding-right:14px; } }
 .grade-row .brick-btn{flex:1;padding:14px;font-size:14px;}
 
 .done-wrap{text-align:center;padding:50px 20px;}
