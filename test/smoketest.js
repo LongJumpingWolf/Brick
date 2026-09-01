@@ -47,7 +47,7 @@ async function main(){
     return v;
   }
 
-  const scriptOrder = ['js/storage.js','js/scheduler.js','js/tree.js','js/occlusion-editor.js','js/study.js','js/app.js'];
+  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/app.js'];
   scriptOrder.forEach(rel => runInPage(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
   await sleep(300); // let boot()'s async seedDemoImage() settle
 
@@ -262,6 +262,137 @@ async function main(){
   const findCard = (n) => n.type==='deck' ? n.cards.find(c=>c.id===cardIdAtStart) : (n.children||[]).map(findCard).find(Boolean);
   const persistedCard = findCard(treeAfterTough);
   assert(persistedCard && persistedCard.tough === true, 'tough tag is actually persisted to localStorage, not just in-memory');
+
+  // =========================================================
+  // Active-mask distinct color while hidden (Hide All mode) —
+  // without this, every hidden box looks identical and there's no way
+  // to know which region THIS card is actually testing.
+  // =========================================================
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('currentCard().mode') === 'hide-all', 'seeded card is in Hide All mode (the case this fix targets)');
+  const hiddenMasks = doc.querySelectorAll('.study-mask.hidden-box');
+  const activeHiddenMasks = doc.querySelectorAll('.study-mask.hidden-box.active-mask');
+  const nonActiveHiddenMasks = doc.querySelectorAll('.study-mask.hidden-box:not(.active-mask)');
+  assert(hiddenMasks.length === 3, 'all 3 masks are hidden before reveal in Hide All mode');
+  assert(activeHiddenMasks.length === 1, 'exactly one hidden mask carries the active-mask class (got ' + activeHiddenMasks.length + ')');
+  assert(nonActiveHiddenMasks.length === 2, 'the other two hidden masks do NOT carry active-mask — they stay visually distinct from the tested one');
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true })); // clean up: leave revealed so next section starts fresh
+  await sleep(10);
+
+  // =========================================================
+  // Basic cards: create via the editor, study, grade
+  // =========================================================
+  doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('editorCardType') === 'occlusion', 'New Brick always opens on the Occlusion tab by default');
+
+  doc.querySelector('.mode-tab[data-type="basic"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('editorCardType') === 'basic', 'clicking the Basic tab switches editorCardType');
+  assert(doc.getElementById('basicPane').style.display !== 'none', 'Basic pane becomes visible');
+  assert(doc.getElementById('occlusionPane').style.display === 'none', 'Occlusion pane hides when Basic tab is active');
+
+  // required-fields guard
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(evalInPage('basicStagedCards.length') === 0, 'clicking Add with empty fields does not stage a blank card');
+
+  doc.getElementById('basicFrontInput').value = 'What nerve is compressed in carpal tunnel syndrome?';
+  doc.getElementById('basicBackInput').value = 'The **median** nerve.';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(evalInPage('basicStagedCards.length') === 1, 'Add card to brick stages one card');
+  assert(doc.getElementById('basicFrontInput').value === '', 'front field clears after staging so the next card can be typed immediately');
+  assert(doc.querySelectorAll('#basicStagedList .staged-row').length === 1, 'staged card renders a row in the list');
+  assert(doc.querySelector('#basicStagedList .staged-back').innerHTML.includes('<strong>median</strong>'), 'staged preview actually renders **bold** formatting, not raw markers — got: "' + doc.querySelector('#basicStagedList .staged-back').innerHTML + '"');
+
+  doc.getElementById('basicFrontInput').value = 'Second basic card front';
+  doc.getElementById('basicBackInput').value = 'Second basic card back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(evalInPage('basicStagedCards.length') === 2, 'a second Add stages a second card (multi-card staging works)');
+
+  doc.getElementById('scrollNameInput').value = 'Basic Card Test Brick';
+  doc.getElementById('generateCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'Create brick returns to the Wall screen');
+  const basicDeck = evalInPage(`nodeById(currentFolderId).children.find(c => c.name === 'Basic Card Test Brick')`);
+  assert(!!basicDeck, 'the Basic brick was created');
+  assert(basicDeck.cards.length === 2, 'both staged cards became real cards (got ' + (basicDeck && basicDeck.cards.length) + ')');
+  assert(basicDeck.cards[0].type === 'basic', 'generated cards carry type "basic"');
+  assert(basicDeck.cards[0].front === 'What nerve is compressed in carpal tunnel syndrome?', 'front text preserved exactly');
+  assert(basicDeck.cards[0].back === 'The **median** nerve.', 'back text (with markers, unrendered) is stored raw — formatting is a rendering concern, not a storage one');
+
+  // study a basic card: text-mode stage, front then back on reveal
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(doc.getElementById('studyStage').classList.contains('text-mode'), 'basic card puts the study stage into text-mode (not the dark image mode)');
+  assert(doc.querySelector('.study-text-inner').textContent.includes('carpal tunnel'), 'front text renders before reveal');
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.querySelector('.study-text-inner').innerHTML.includes('<strong>median</strong>'), 'back text renders on reveal, WITH formatting applied — got: "' + doc.querySelector('.study-text-inner').innerHTML + '"');
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
+  // Cloze cards: parsing correctness, staging, study
+  // =========================================================
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.querySelector('.mode-tab[data-type="cloze"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('editorCardType') === 'cloze', 'clicking the Cloze tab switches editorCardType');
+
+  // invalid (no brackets) is rejected
+  doc.getElementById('clozeInput').value = 'This has no cloze markers at all.';
+  doc.getElementById('addClozeCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(evalInPage('clozeStagedCards.length') === 0, 'text without [[brackets]] is rejected, not staged');
+
+  // live preview updates as you type
+  doc.getElementById('clozeInput').value = 'The [[median]] nerve is compressed in carpal tunnel syndrome.';
+  doc.getElementById('clozeInput').dispatchEvent(new window.Event('input', { bubbles:true }));
+  assert(doc.getElementById('clozePreviewFront').innerHTML.includes('cloze-blank'), 'live preview front shows a blanked-out placeholder for the bracketed term');
+  assert(!doc.getElementById('clozePreviewFront').innerHTML.includes('median'), 'the actual answer text does NOT leak into the front preview');
+  assert(doc.getElementById('clozePreviewBack').innerHTML.includes('cloze-answer') && doc.getElementById('clozePreviewBack').innerHTML.includes('median'), 'live preview back reveals the answer, styled distinctly');
+
+  doc.getElementById('addClozeCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(evalInPage('clozeStagedCards.length') === 1, 'valid cloze text gets staged');
+  assert(doc.getElementById('clozeInput').value === '', 'cloze field clears after staging');
+
+  doc.getElementById('scrollNameInput').value = 'Cloze Test Brick';
+  doc.getElementById('generateCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const clozeDeck = evalInPage(`nodeById(currentFolderId).children.find(c => c.name === 'Cloze Test Brick')`);
+  assert(!!clozeDeck, 'the Cloze brick was created');
+  assert(clozeDeck.cards[0].type === 'cloze', 'generated card carries type "cloze"');
+  assert(clozeDeck.cards[0].text === 'The [[median]] nerve is compressed in carpal tunnel syndrome.', 'raw cloze text (with brackets) is stored as-is');
+
+  runInPage(`openBrickPreview('${clozeDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(doc.querySelector('.study-text-inner').innerHTML.includes('cloze-blank') && !doc.querySelector('.study-text-inner').innerHTML.includes('median'), 'studying a cloze card shows the blanked front, answer hidden');
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.querySelector('.study-text-inner').innerHTML.includes('median'), 'revealing shows the actual answer');
+
+  // Cancel/reopen resets editorCardType back to Occlusion and clears staged cards
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('editorCardType') === 'occlusion', 'reopening New Brick always resets to the Occlusion tab');
+  assert(evalInPage('basicStagedCards.length') === 0, 'reopening New Brick clears any previously staged Basic cards');
+  assert(evalInPage('clozeStagedCards.length') === 0, 'reopening New Brick clears any previously staged Cloze cards');
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);

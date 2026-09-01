@@ -1,14 +1,24 @@
 # Brick
 
-Image-occlusion cramming app. Local-only (localStorage + IndexedDB) —
-no backend, no build step, deploys as a plain static site.
+Image-occlusion cramming app, plus Basic and Cloze card types. Local-only
+(localStorage + IndexedDB) — no backend, no build step, deploys as a
+plain static site.
 
 Wall/Brick file manager (borrowed from Kardex's folder/deck tree shape)
-plus an image occlusion editor deliberately modeled on **Anki's actual
-Image Occlusion editor**: Select / Rectangle / Ellipse tools, drag to
-draw, drag a shape's body to move it, drag a corner handle to resize
-it, "Hide All, Guess One" / "Hide One, Guess One" review modes, and
-the same Header / Back Extra fields Anki's IO note type ships with.
+plus a card editor with three tabs:
+
+- **Image Occlusion** — modeled on Anki's actual editor: Select /
+  Rectangle / Ellipse tools, drag to draw, drag a shape's body to move
+  it, drag a corner handle to resize it, "Hide All, Guess One" / "Hide
+  One, Guess One" review modes, Header / Back Extra fields. In Hide-All
+  mode, the specific shape a given card tests gets its own color even
+  while hidden, so you know where to focus without the answer being
+  given away — plain Anki doesn't distinguish that, everything hidden
+  looks identical there.
+- **Basic** — front/back, with a bold/italic/underline/highlight
+  toolbar. Stage several cards before naming the brick.
+- **Cloze** — `[[bracket]]` syntax with a live front/back preview,
+  same staging flow as Basic.
 
 ## File map
 
@@ -16,17 +26,25 @@ the same Header / Back Extra fields Anki's IO note type ships with.
 index.html                  shell — all screens + overlays live here
 css/
   tokens.css                 colors, shadows, texture, focus ring
-  components.css              brick buttons, modals, tile menu
+  components.css              brick buttons, modals, tile menu, shared
+                               text-formatting classes (.highlight,
+                               .cloze-blank, .cloze-answer)
   layout.css                  app shell, top bar, tile grid
   preview.css                  brick preview screen
   occlusion-editor.css        toolbar, shapes, resize handles
-  study.css                   study screen, timer bar
+  card-types.css               card-type tabs, format toolbar, staged
+                               card list, cloze live preview
+  study.css                   study screen, timer bar, text-mode card
 js/
   storage.js                  IndexedDB image store (hash-deduped) + localStorage tree/log
   scheduler.js                 SM-2-style spaced repetition
+  text-format.js               bold/italic/underline/highlight + cloze
+                               front/back parsing — shared by the editor
+                               preview and study rendering
   tree.js                      Wall/Brick CRUD, kebab menu, drag-drop, search, keyboard nav
-  occlusion-editor.js         the shape editor — the newest/riskiest file, kept isolated
-  study.js                     preview + study/review loop
+  occlusion-editor.js         the shape editor (Occlusion tab only)
+  basic-cloze.js                Basic/Cloze tabs — staging + generation
+  study.js                     preview + study/review loop, all 3 card types
   app.js                       shared shell helpers + boot (loaded LAST)
 test/
   smoketest.js                 headless integration test — see below
@@ -35,13 +53,15 @@ package.json                    dev-only test deps + scripts
 ```
 
 Each file is scoped to one concern on purpose — if you need to change
-how shapes resize, that's entirely inside `occlusion-editor.js`, and
-nothing else needs to be touched. Files are loaded as plain `<script>`
-tags (no bundler, no build step), so **script order in `index.html`
-matters**: `storage.js` and `scheduler.js` first (no dependencies),
-then `tree.js` / `occlusion-editor.js` / `study.js` (depend on storage
-+ scheduler), then `app.js` last (calls the `init...()` function each
-of the other files exports).
+how shapes resize, that's entirely inside `occlusion-editor.js`; if you
+need to change how Basic cards stage, that's entirely inside
+`basic-cloze.js`; neither touches the other. Files are loaded as plain
+`<script>` tags (no bundler, no build step), so **script order in
+`index.html` matters**: `storage.js`, `scheduler.js`, `text-format.js`
+first (no dependencies on the others), then `tree.js` /
+`occlusion-editor.js` / `basic-cloze.js` / `study.js` (depend on those
+three), then `app.js` last (calls the `init...()` function each of the
+other files exports).
 
 ## Run it locally
 
@@ -62,13 +82,31 @@ npm test
 ```
 
 This runs a headless-browser (jsdom) integration test that loads the
-real `index.html` and all six real `js/*.js` files — via actual
+real `index.html` and all eight real `js/*.js` files — via actual
 `<script>` elements, not `eval()`, so it accurately exercises the same
 cross-file scope-sharing the app relies on in a real browser — then
 drives the full loop: create a Wall, open the occlusion editor, draw a
 rectangle and an ellipse, move and resize a shape via its handles,
-generate cards, study them, grade them, and confirm a triple-timeout
-auto-tags a card Tough. 53 assertions, all currently passing.
+generate cards, study them, grade them, confirm a triple-timeout
+auto-tags a card Tough, confirm the active-mask color distinction in
+Hide All mode, stage and create Basic cards (with formatting), and
+stage and create Cloze cards (with correct front/back parsing). 79
+assertions, all currently passing.
+
+## Database / environment variables
+
+**None needed right now.** Everything lives in the browser's own
+localStorage and IndexedDB — there's no Supabase, no serverless
+function, no API key of any kind in this build. You can deploy this to
+Vercel exactly as-is with zero environment variables set.
+
+If you later want cross-device cloud sync (so a brick made on your
+laptop shows up on your phone), that's a real addition, not a flag to
+flip — it would mean wiring up Supabase (SUPABASE_URL,
+SUPABASE_ANON_KEY as env vars) for the tree/review-log data, plus an
+api/upload-image.js serverless relay to ImgBB (IMGBB_API_KEY) for
+the images, same pattern Kardex already uses. Say the word and I'll
+build that as its own piece of work.
 
 ## Deploy
 

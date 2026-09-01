@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/layout.css">
 <link rel="stylesheet" href="css/preview.css">
 <link rel="stylesheet" href="css/occlusion-editor.css">
+<link rel="stylesheet" href="css/card-types.css">
 <link rel="stylesheet" href="css/study.css">
 </head>
 <body>
@@ -57,80 +58,128 @@
     <div class="tile-grid" id="tileGrid" role="grid" aria-label="Wall contents"></div>
   </div>
 
-  <!-- ===================== SCREEN: NEW BRICK — occlusion editor ===================== -->
+  <!-- ===================== SCREEN: NEW BRICK — card editor ===================== -->
   <div class="screen" id="screenEditor">
     <div class="editor-head">
       <button type="button" class="brick-btn outline icon-btn" id="editorBackBtn" aria-label="Back">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
-      <h2>New Brick — image occlusion</h2>
+      <h2>New Brick</h2>
     </div>
 
-    <div id="editorUploadStep">
-      <div class="upload-zone" id="uploadZone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
-        <p>Tap to choose an image, or paste one (Ctrl/Cmd+V)</p>
-        <div class="sub">Histology slide, gross specimen, diagram — anything you'd draw shapes on</div>
-      </div>
-      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    <div class="mode-tabs" role="tablist" aria-label="Card type">
+      <button type="button" class="mode-tab active" data-type="occlusion" role="tab" aria-selected="true">Image Occlusion</button>
+      <button type="button" class="mode-tab" data-type="basic" role="tab" aria-selected="false">Basic</button>
+      <button type="button" class="mode-tab" data-type="cloze" role="tab" aria-selected="false">Cloze</button>
     </div>
 
-    <div id="editorMaskStep" style="display:none;">
-      <div class="io-toolbar" role="toolbar" aria-label="Occlusion tools">
-        <button type="button" class="io-tool" data-tool="select" title="Select (V)" aria-label="Select tool">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"/></svg>
-        </button>
-        <button type="button" class="io-tool active" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle tool">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
-        </button>
-        <button type="button" class="io-tool" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse tool">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>
-        </button>
-        <div class="io-toolbar-sep"></div>
-        <button type="button" class="io-tool" id="ioDeleteShapeBtn" title="Delete selected shape (Del)" aria-label="Delete selected shape">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-        </button>
-        <div class="io-toolbar-spacer"></div>
-        <span class="io-tool-label">drag to draw · click a shape with Select to move/resize</span>
+    <!-- ===== Occlusion pane ===== -->
+    <div id="occlusionPane">
+      <div id="editorUploadStep">
+        <div class="upload-zone" id="uploadZone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+          <p>Tap to choose an image, or paste one (Ctrl/Cmd+V)</p>
+          <div class="sub">Histology slide, gross specimen, diagram — anything you'd draw shapes on</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" style="display:none;">
       </div>
 
-      <div class="io-stage-wrap">
-        <div class="io-stage tool-rect" id="ioStage"></div>
-      </div>
-      <div class="io-hint">shapes become one card each, sharing this one image</div>
+      <div id="editorMaskStep" style="display:none;">
+        <div class="io-toolbar" role="toolbar" aria-label="Occlusion tools">
+          <button type="button" class="io-tool" data-tool="select" title="Select (V)" aria-label="Select tool">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"/></svg>
+          </button>
+          <button type="button" class="io-tool active" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle tool">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+          </button>
+          <button type="button" class="io-tool" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse tool">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>
+          </button>
+          <div class="io-toolbar-sep"></div>
+          <button type="button" class="io-tool" id="ioDeleteShapeBtn" title="Delete selected shape (Del)" aria-label="Delete selected shape">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          </button>
+          <div class="io-toolbar-spacer"></div>
+          <span class="io-tool-label">drag to draw · click a shape with Select to move/resize</span>
+        </div>
 
-      <div class="io-shape-list" id="ioShapeList"></div>
+        <div class="io-stage-wrap">
+          <div class="io-stage tool-rect" id="ioStage"></div>
+        </div>
+        <div class="io-hint">shapes become one card each, sharing this one image</div>
 
-      <div class="row-label">Review mode</div>
-      <div class="mode-choice" id="modeChoice">
-        <button type="button" class="mode-opt active" data-mode="hide-all">
-          <div class="mo-title">Hide All, Guess One</div>
-          <div class="mo-sub">Every shape hidden — pure recall, no positional hints from other labels.</div>
-        </button>
-        <button type="button" class="mode-opt" data-mode="hide-one">
-          <div class="mo-title">Hide One, Guess One</div>
-          <div class="mo-sub">Only the tested shape is hidden — others stay labeled for context.</div>
-        </button>
-      </div>
+        <div class="io-shape-list" id="ioShapeList"></div>
 
-      <div class="row-label">Brick name</div>
-      <div style="margin-bottom:18px;">
-        <input type="text" id="scrollNameInput" class="modal-input" placeholder="e.g. Kidney — Glomerulus" style="margin-bottom:0;">
-      </div>
+        <div class="row-label">Review mode</div>
+        <div class="mode-choice" id="modeChoice">
+          <button type="button" class="mode-opt active" data-mode="hide-all">
+            <div class="mo-title">Hide All, Guess One</div>
+            <div class="mo-sub">Every shape hidden — the one THIS card tests still gets its own color, so your eye knows where to focus even though the answer stays hidden.</div>
+          </button>
+          <button type="button" class="mode-opt" data-mode="hide-one">
+            <div class="mo-title">Hide One, Guess One</div>
+            <div class="mo-sub">Only the tested shape is hidden — others stay labeled for context.</div>
+          </button>
+        </div>
 
-      <div class="io-field-block">
-        <label class="io-field-label" for="headerInput">Header <span style="text-transform:none;font-weight:400;">(optional)</span></label>
-        <input type="text" id="headerInput" class="modal-input" placeholder="Shown above the image on both sides" style="margin-bottom:0;">
+        <div class="io-field-block">
+          <label class="io-field-label" for="headerInput">Header <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+          <input type="text" id="headerInput" class="modal-input" placeholder="Shown above the image on both sides" style="margin-bottom:0;">
+        </div>
+        <div class="io-field-block">
+          <label class="io-field-label" for="backExtraInput">Back Extra <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+          <textarea id="backExtraInput" class="modal-input" rows="2" placeholder="Extra context shown below the image, answer side only" style="margin-bottom:0;resize:vertical;"></textarea>
+        </div>
       </div>
-      <div class="io-field-block">
-        <label class="io-field-label" for="backExtraInput">Back Extra <span style="text-transform:none;font-weight:400;">(optional)</span></label>
-        <textarea id="backExtraInput" class="modal-input" rows="2" placeholder="Extra context shown below the image, answer side only" style="margin-bottom:0;resize:vertical;"></textarea>
-      </div>
+    </div>
 
-      <div class="overlay-close-row" style="justify-content:space-between;">
-        <button type="button" class="brick-btn outline small" onclick="showScreen('screenWall'); renderTree();">Cancel</button>
-        <button type="button" class="brick-btn small" id="generateCardsBtn">Generate cards →</button>
+    <!-- ===== Basic pane ===== -->
+    <div id="basicPane" style="display:none;">
+      <div class="fmt-toolbar">
+        <button type="button" class="fmt-btn fmt-b" data-w="**" title="Bold">B</button>
+        <button type="button" class="fmt-btn fmt-i" data-w="*" title="Italic">I</button>
+        <button type="button" class="fmt-btn fmt-u" data-w="__" title="Underline">U</button>
+        <button type="button" class="fmt-btn fmt-h" data-w="==" title="Highlight">H</button>
+        <span class="fmt-toolbar-hint" id="basicFmtHint">applies to: Front</span>
       </div>
+      <div class="editor-face-block">
+        <label class="io-field-label" for="basicFrontInput">Front</label>
+        <textarea id="basicFrontInput" class="modal-input" rows="2" placeholder="Question or term…" style="margin-bottom:0;"></textarea>
+      </div>
+      <div class="editor-face-block" style="margin-top:12px;">
+        <label class="io-field-label" for="basicBackInput">Back</label>
+        <textarea id="basicBackInput" class="modal-input" rows="4" placeholder="Answer…" style="margin-bottom:0;"></textarea>
+      </div>
+      <button type="button" class="brick-btn outline small" id="addBasicCardBtn" style="margin-top:12px;">+ Add card to brick</button>
+      <div class="staged-card-list" id="basicStagedList"></div>
+    </div>
+
+    <!-- ===== Cloze pane ===== -->
+    <div id="clozePane" style="display:none;">
+      <label class="io-field-label" for="clozeInput">Sentence — wrap the hidden part in [[double brackets]]</label>
+      <div class="fmt-toolbar">
+        <button type="button" class="fmt-btn fmt-b" data-w="**" title="Bold">B</button>
+        <button type="button" class="fmt-btn fmt-i" data-w="*" title="Italic">I</button>
+        <button type="button" class="fmt-btn fmt-u" data-w="__" title="Underline">U</button>
+        <button type="button" class="fmt-btn fmt-h" data-w="==" title="Highlight">H</button>
+      </div>
+      <textarea id="clozeInput" class="modal-input" rows="3" placeholder="The [[median]] nerve is compressed in carpal tunnel syndrome" style="margin-bottom:0;"></textarea>
+      <div class="cloze-preview">
+        <div><span class="cloze-preview-label">Front</span><div id="clozePreviewFront" class="cloze-preview-text"></div></div>
+        <div><span class="cloze-preview-label">Back</span><div id="clozePreviewBack" class="cloze-preview-text"></div></div>
+      </div>
+      <button type="button" class="brick-btn outline small" id="addClozeCardBtn" style="margin-top:12px;">+ Add card to brick</button>
+      <div class="staged-card-list" id="clozeStagedList"></div>
+    </div>
+
+    <!-- ===== shared: name + create, all three tabs ===== -->
+    <div class="row-label" style="margin-top:20px;">Brick name</div>
+    <div style="margin-bottom:18px;">
+      <input type="text" id="scrollNameInput" class="modal-input" placeholder="e.g. Kidney — Glomerulus" style="margin-bottom:0;">
+    </div>
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small" onclick="showScreen('screenWall'); renderTree();">Cancel</button>
+      <button type="button" class="brick-btn small" id="generateCardsBtn">Create brick →</button>
     </div>
   </div>
 
@@ -284,8 +333,10 @@
 
 <script src="js/storage.js"></script>
 <script src="js/scheduler.js"></script>
+<script src="js/text-format.js"></script>
 <script src="js/tree.js"></script>
 <script src="js/occlusion-editor.js"></script>
+<script src="js/basic-cloze.js"></script>
 <script src="js/study.js"></script>
 <script src="js/app.js"></script>
 </body>

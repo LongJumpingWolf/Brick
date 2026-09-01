@@ -1,0 +1,40 @@
+/* ===================== CARD-TYPE TABS (top of the New Brick screen) ===================== */
+.mode-tabs{display:flex;gap:6px;margin-bottom:18px;background:var(--mortar);padding:3px;border-radius:9px;}
+.mode-tab{flex:1;padding:8px 0;border:none;background:transparent;border-radius:7px;font-size:12.5px;color:var(--ink-soft);font-weight:600;}
+.mode-tab.active{background:var(--paper);color:var(--clay-dark);box-shadow:var(--shadow);}
+
+/* ===================== FORMAT TOOLBAR (Basic + Cloze) ===================== */
+.fmt-toolbar{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center;}
+.fmt-toolbar-hint{font-size:11px;color:var(--ink-soft);margin-left:6px;font-family:'IBM Plex Mono',monospace;}
+.fmt-btn{width:28px;height:26px;display:flex;align-items:center;justify-content:center;
+  border:none;background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--mortar-dark);border-radius:6px;
+  font-size:12.5px;color:var(--ink-soft);line-height:1;
+}
+.fmt-btn:hover{color:var(--clay-dark);box-shadow:inset 0 0 0 1.5px var(--clay);}
+.fmt-btn.fmt-b{font-weight:700;}
+.fmt-btn.fmt-i{font-style:italic;}
+.fmt-btn.fmt-u{text-decoration:underline;}
+.fmt-btn.fmt-h{background:linear-gradient(transparent 55%, #FCEFC7 55%);}
+
+.editor-face-block{}
+
+/* ===================== STAGED CARD LIST (Basic + Cloze) ===================== */
+.staged-card-list{display:flex;flex-direction:column;gap:8px;margin:16px 0 20px;}
+.staged-row{display:flex;align-items:flex-start;gap:10px;background:var(--paper);
+  box-shadow:inset 0 0 0 1.5px var(--mortar-dark);border-radius:9px;padding:9px 11px;
+}
+.staged-num{width:20px;height:20px;border-radius:50%;background:var(--clay);color:#fff;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:1px;
+}
+.staged-preview{flex:1;min-width:0;font-size:13px;line-height:1.4;}
+.staged-front{font-weight:600;color:var(--ink);}
+.staged-back{color:var(--ink-soft);margin-top:3px;}
+.del-staged{width:24px;height:24px;border-radius:6px;color:var(--ink-soft);flex-shrink:0;background:none;border:none;}
+.del-staged:hover{background:rgba(181,75,54,.15);color:var(--clay-dark);}
+
+/* ===================== CLOZE LIVE PREVIEW ===================== */
+.cloze-preview{display:flex;gap:10px;margin-top:12px;}
+.cloze-preview > div{flex:1;min-width:0;background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--mortar-dark);border-radius:8px;padding:9px 11px;}
+.cloze-preview-label{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);}
+.cloze-preview-text{font-family:'Fraunces',serif;font-size:13.5px;margin-top:5px;overflow-wrap:break-word;min-height:1.4em;}

@@ -110,6 +110,7 @@ async function boot(){
   try { await seedDemoImage(); } catch (err){ console.warn('Demo seed image failed (non-fatal)', err); }
   initTreeScreen();
   initOcclusionEditor();
+  initBasicClozeEditor();
   initStudyScreens();
   initShortcutsOverlay();
   initGlobalHotkeys();

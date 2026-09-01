@@ -20,11 +20,24 @@
   margin-bottom:10px; background:#111; cursor:pointer;
 }
 .study-stage img{display:block;width:100%;height:100%;object-fit:contain;background:#0c0c0c;}
+
+/* text-mode: Basic/Cloze cards — same stage frame, but a light card
+   surface instead of the dark image backdrop */
+.study-stage.text-mode{background:var(--paper);}
+.study-text-card{padding:34px 26px;min-height:200px;display:flex;align-items:center;justify-content:center;text-align:center;}
+.study-text-inner{font-family:'Fraunces',serif;font-size:19px;line-height:1.55;color:var(--ink);}
 .study-mask{position:absolute;}
 .study-mask.shape-ellipse{ border-radius:50%; }
 .study-mask.hidden-box{
   background:repeating-linear-gradient(135deg, var(--clay) 0 10px, var(--clay-dark) 10px 20px);
   box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.3);
+}
+/* the shape THIS card is actually testing gets its own color even while
+   hidden — without this, "Hide All" mode gives no clue which of several
+   identical-looking boxes you're meant to focus on */
+.study-mask.hidden-box.active-mask{
+  background:repeating-linear-gradient(135deg, var(--amber) 0 10px, var(--amber-dark) 10px 20px);
+  box-shadow:inset 0 0 0 2px var(--amber-dark);
 }
 .study-mask.revealed-box{ background:rgba(255,255,255,.06); border:1.5px dashed rgba(216,154,62,.7); }
 .study-mask.revealed-box.active-mask{ border-style:solid; border-color:var(--amber); box-shadow:0 0 0 2px rgba(216,154,62,.3); }

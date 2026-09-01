@@ -37,6 +37,7 @@ function openOcclusionEditor(folderId){
   document.getElementById('backExtraInput').value = '';
   setEditorTool('rect');
   document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('active', b.dataset.mode==='hide-all'));
+  resetBasicClozeState(); // also resets the Basic/Cloze tabs and lands on the Occlusion tab
   showScreen('screenEditor');
 }
 
@@ -290,8 +291,6 @@ function initOcclusionEditor(){
   });
 
   document.getElementById('editorBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
-
-  document.getElementById('generateCardsBtn').addEventListener('click', generateOcclusionCards);
 
   // Anki-style tool hotkeys, active only while this screen is showing and no field has focus
   document.addEventListener('keydown', (e)=>{

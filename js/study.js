@@ -58,10 +58,15 @@ async function renderStudyCard(){
   const c = currentCard();
   const deck = nodeById(session.deckId);
   document.getElementById('studyTitle').textContent = deck.name + ' · ' + (session.pos+1) + '/' + session.order.length;
-  const rec = await getImage(c.imgHash);
+
   const stage = document.getElementById('studyStage');
-  stage.style.aspectRatio = c.imgW + ' / ' + c.imgH;
-  stage.innerHTML = '<img alt="" src="' + (rec ? rec.dataUrl : '') + '">';
+  if (c.type === 'occlusion'){
+    const rec = await getImage(c.imgHash);
+    stage.style.aspectRatio = c.imgW + ' / ' + c.imgH;
+    stage.innerHTML = '<img alt="" src="' + (rec ? rec.dataUrl : '') + '">';
+  } else {
+    stage.style.aspectRatio = '';
+  }
 
   document.getElementById('studyHeaderText').textContent = c.header || '';
   document.getElementById('studyFooterText').textContent = '';
@@ -70,10 +75,35 @@ async function renderStudyCard(){
   session.timedOutThisAttempt = false;
   document.getElementById('gradeRow').style.opacity = '0';
   document.getElementById('gradeRow').style.pointerEvents = 'none';
-  setTapHint('tap image to reveal');
-  paintMasks(c);
+  setTapHint('tap ' + (c.type === 'occlusion' ? 'image' : 'card') + ' to reveal');
+  paintCardContent(c);
   session.remaining = studyTimePerCard;
   startOrResumeTimer();
+}
+/* Dispatches to the right renderer by card type — occlusion draws mask
+   overlays on an image; basic/cloze show plain front/back text. Both
+   share the same #studyStage element and the same reveal/timer/grade
+   mechanics, which don't care what's inside the stage. */
+function paintCardContent(c){
+  const stage = document.getElementById('studyStage');
+  if (c.type === 'occlusion'){
+    stage.classList.remove('text-mode');
+    paintMasks(c);
+  } else {
+    stage.classList.add('text-mode');
+    paintTextCard(c);
+  }
+}
+function paintTextCard(c){
+  const stage = document.getElementById('studyStage');
+  let html;
+  if (c.type === 'cloze'){
+    const fb = clozeFrontBack(c.text);
+    html = session.revealed ? fb.back : fb.front;
+  } else {
+    html = session.revealed ? formatInline(c.back) : formatInline(c.front);
+  }
+  stage.innerHTML = '<div class="study-text-card"><div class="study-text-inner">' + html + '</div></div>';
 }
 function paintMasks(c){
   const stage = document.getElementById('studyStage');
@@ -84,7 +114,7 @@ function paintMasks(c){
     if (c.mode === 'hide-all') hidden = !session.revealed;
     else hidden = isActive && !session.revealed; // hide-one, guess one: only the active shape is ever hidden
     const shapeCls = m.shape === 'ellipse' ? ' shape-ellipse' : '';
-    const cls = (hidden ? 'study-mask hidden-box' : 'study-mask revealed-box' + (isActive ? ' active-mask' : '')) + shapeCls;
+    const cls = 'study-mask' + (hidden ? ' hidden-box' : ' revealed-box') + (isActive ? ' active-mask' : '') + shapeCls;
     const label = hidden ? '' : '<span class="mlabel">' + escapeHtml(m.label || '?') + '</span>';
     return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + '</div>';
   }).join('');
@@ -102,14 +132,15 @@ function setTapHint(text, warn){
 function toggleReveal(){
   const c = currentCard();
   session.revealed = !session.revealed;
-  paintMasks(c);
+  paintCardContent(c);
+  const noun = c.type === 'occlusion' ? 'image' : 'card';
   if (session.revealed){
     pauseTimer();
-    setTapHint(session.timedOutThisAttempt ? "time's up earlier — here's the answer" : 'tap image to hide again');
+    setTapHint(session.timedOutThisAttempt ? "time's up earlier — here's the answer" : 'tap ' + noun + ' to hide again');
     document.getElementById('gradeRow').style.opacity = '1';
     document.getElementById('gradeRow').style.pointerEvents = 'auto';
   } else {
-    setTapHint('tap image to reveal');
+    setTapHint('tap ' + noun + ' to reveal');
     if (!session.timedOutThisAttempt && studyTimePerCard) startOrResumeTimer();
   }
 }
@@ -151,7 +182,7 @@ function onStudyTimeout(){
   const c = currentCard();
   session.timedOutThisAttempt = true;
   c.timeouts = (c.timeouts||0) + 1;
-  if (!session.revealed){ session.revealed = true; paintMasks(c); }
+  if (!session.revealed){ session.revealed = true; paintCardContent(c); }
   document.getElementById('timerFill').classList.add('paused');
   setTapHint("time's up — this counts as a miss", true);
   document.getElementById('gradeRow').style.opacity = '1';
