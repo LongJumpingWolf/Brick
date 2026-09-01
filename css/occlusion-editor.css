@@ -1,0 +1,68 @@
+.editor-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.editor-head h2{font-family:'Fraunces',serif;font-size:19px;margin:0;flex:1;}
+
+.upload-zone{border:1.5px dashed var(--mortar-dark);border-radius:14px;padding:40px 20px;text-align:center;color:var(--ink-soft);cursor:pointer;background:var(--paper);}
+.upload-zone:hover{border-color:var(--clay);color:var(--ink);}
+.upload-zone svg{width:30px;height:30px;margin-bottom:10px;color:var(--clay);}
+.upload-zone p{margin:0;font-size:13px;}
+.upload-zone .sub{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+
+/* ---- toolbar: Select / Rectangle / Ellipse — same three tools Anki's
+   Image Occlusion editor ships (it also has Polygon and Text; scoped
+   out here, see README) ---- */
+.io-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:10px;padding:6px;
+  background:var(--paper);border-radius:8px;box-shadow:inset 0 0 0 1.5px var(--mortar-dark);
+  flex-wrap:wrap;
+}
+.io-tool{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  color:var(--ink-soft);background:none;border:none;
+}
+.io-tool:hover{background:var(--mortar);color:var(--ink);}
+.io-tool.active{background:var(--clay);color:#fff;}
+.io-toolbar-sep{width:1px;align-self:stretch;background:var(--mortar-dark);margin:4px 2px;}
+.io-toolbar-spacer{flex:1;}
+.io-tool-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-soft);padding:0 6px;}
+
+.io-stage-wrap{margin-bottom:16px;}
+.io-stage{position:relative;width:100%;background:#111;border-radius:10px;overflow:hidden;
+  border:1px solid var(--mortar-dark); touch-action:none; user-select:none; box-shadow:var(--shadow);
+}
+.io-stage.tool-rect, .io-stage.tool-ellipse{ cursor:crosshair; }
+.io-stage.tool-select{ cursor:default; }
+.io-stage img{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;}
+
+.io-shape{position:absolute;border:1.5px solid var(--clay-dark);background:rgba(181,75,54,.32);border-radius:2px;box-sizing:border-box;}
+.io-shape.shape-ellipse{border-radius:50%;}
+.io-shape.selected{border-color:var(--amber-dark);background:rgba(216,154,62,.3);box-shadow:0 0 0 1px var(--amber-dark);}
+.io-shape.drawing{border-style:dashed;}
+.io-shape .io-shape-num{position:absolute;top:2px;left:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none;}
+.io-shape.selected .io-shape-num{color:#3A2A0F;text-shadow:none;}
+
+.io-handle{position:absolute;width:11px;height:11px;background:var(--paper);border:1.5px solid var(--amber-dark);
+  border-radius:2px;transform:translate(-50%,-50%);
+}
+.io-handle.nw, .io-handle.se{ cursor:nwse-resize; }
+.io-handle.ne, .io-handle.sw{ cursor:nesw-resize; }
+
+.io-hint{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-soft);margin:8px 0 16px;}
+
+.io-shape-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;}
+.io-shape-row{display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--mortar-dark);border-radius:9px;padding:8px 10px;}
+.io-shape-row.selected{border-color:var(--amber-dark);box-shadow:0 0 0 1px var(--amber-dark);}
+.io-shape-row .snum-badge{width:20px;height:20px;border-radius:50%;background:var(--clay);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.io-shape-row .snum-badge.ellipse{border-radius:50%;background:var(--amber-dark);}
+.io-shape-row input{flex:1;margin-bottom:0;padding:7px 10px;font-size:12.5px;}
+.io-shape-row .del-shape{width:26px;height:26px;border-radius:7px;color:var(--ink-soft);flex-shrink:0;background:none;border:none;}
+.io-shape-row .del-shape:hover{background:rgba(181,75,54,.15);color:var(--clay-dark);}
+
+.mode-choice{display:flex;gap:8px;margin-bottom:20px;}
+.mode-opt{flex:1;padding:12px;border-radius:11px;border:1.5px solid var(--mortar-dark);background:var(--paper);text-align:left;}
+.mode-opt.active{border-color:var(--amber-dark);background:rgba(216,154,62,.08);}
+.mode-opt .mo-title{font-weight:600;font-size:13px;margin-bottom:3px;}
+.mode-opt .mo-sub{font-size:11px;color:var(--ink-soft);line-height:1.4;}
+
+/* Header + Back Extra — the two extra note fields Anki's Image
+   Occlusion note type ships with, matched by name deliberately */
+.io-field-block{margin-bottom:16px;}
+.io-field-label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.io-field-hint{font-size:10.5px;color:var(--ink-soft);margin:4px 0 0;}

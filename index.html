@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Brick — image occlusion cramming</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/preview.css">
+<link rel="stylesheet" href="css/occlusion-editor.css">
+<link rel="stylesheet" href="css/study.css">
+</head>
+<body>
+<a href="#screenWall" class="visually-hidden focusable">Skip to Wall content</a>
+<div id="app">
+
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="2" y="6" width="13" height="8" rx="1.5" fill="#B54B36" stroke="#8B3526" stroke-width="1"/>
+          <rect x="17" y="6" width="13" height="8" rx="1.5" fill="#D0664E" stroke="#8B3526" stroke-width="1"/>
+          <rect x="9" y="16" width="13" height="8" rx="1.5" fill="#8B3526" stroke="#5c211d" stroke-width="1"/>
+          <rect x="2" y="16" width="5" height="8" rx="1.5" fill="#B54B36" stroke="#5c211d" stroke-width="1"/>
+          <rect x="24" y="16" width="6" height="8" rx="1.5" fill="#B54B36" stroke="#5c211d" stroke-width="1"/>
+        </svg>
+      </div>
+      <span class="logo-text">BRICK<span class="k">.</span></span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="brick-btn outline icon-btn" id="shortcutsBtn" aria-label="Keyboard shortcuts (press ?)" title="Keyboard shortcuts (?)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="brick-btn outline icon-btn" id="homeBtn" aria-label="Home">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+    </button>
+  </div>
+
+  <!-- ===================== SCREEN: WALL (file manager) ===================== -->
+  <div class="screen active" id="screenWall">
+    <div class="crumbs" id="crumbs"></div>
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <label for="searchInput" class="visually-hidden">Search this wall</label>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search this wall…">
+      </div>
+      <span class="search-hint"><kbd>/</kbd> to search</span>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="brick-btn outline small" id="newWallBtn">🧱 New Wall <kbd style="margin-left:6px;">W</kbd></button>
+      <button type="button" class="brick-btn small" id="newBrickBtn">＋ New Brick <kbd style="margin-left:6px;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff;">N</kbd></button>
+    </div>
+    <div class="tile-grid" id="tileGrid" role="grid" aria-label="Wall contents"></div>
+  </div>
+
+  <!-- ===================== SCREEN: NEW BRICK — occlusion editor ===================== -->
+  <div class="screen" id="screenEditor">
+    <div class="editor-head">
+      <button type="button" class="brick-btn outline icon-btn" id="editorBackBtn" aria-label="Back">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h2>New Brick — image occlusion</h2>
+    </div>
+
+    <div id="editorUploadStep">
+      <div class="upload-zone" id="uploadZone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        <p>Tap to choose an image, or paste one (Ctrl/Cmd+V)</p>
+        <div class="sub">Histology slide, gross specimen, diagram — anything you'd draw shapes on</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    </div>
+
+    <div id="editorMaskStep" style="display:none;">
+      <div class="io-toolbar" role="toolbar" aria-label="Occlusion tools">
+        <button type="button" class="io-tool" data-tool="select" title="Select (V)" aria-label="Select tool">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"/></svg>
+        </button>
+        <button type="button" class="io-tool active" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle tool">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+        </button>
+        <button type="button" class="io-tool" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse tool">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>
+        </button>
+        <div class="io-toolbar-sep"></div>
+        <button type="button" class="io-tool" id="ioDeleteShapeBtn" title="Delete selected shape (Del)" aria-label="Delete selected shape">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </button>
+        <div class="io-toolbar-spacer"></div>
+        <span class="io-tool-label">drag to draw · click a shape with Select to move/resize</span>
+      </div>
+
+      <div class="io-stage-wrap">
+        <div class="io-stage tool-rect" id="ioStage"></div>
+      </div>
+      <div class="io-hint">shapes become one card each, sharing this one image</div>
+
+      <div class="io-shape-list" id="ioShapeList"></div>
+
+      <div class="row-label">Review mode</div>
+      <div class="mode-choice" id="modeChoice">
+        <button type="button" class="mode-opt active" data-mode="hide-all">
+          <div class="mo-title">Hide All, Guess One</div>
+          <div class="mo-sub">Every shape hidden — pure recall, no positional hints from other labels.</div>
+        </button>
+        <button type="button" class="mode-opt" data-mode="hide-one">
+          <div class="mo-title">Hide One, Guess One</div>
+          <div class="mo-sub">Only the tested shape is hidden — others stay labeled for context.</div>
+        </button>
+      </div>
+
+      <div class="row-label">Brick name</div>
+      <div style="margin-bottom:18px;">
+        <input type="text" id="scrollNameInput" class="modal-input" placeholder="e.g. Kidney — Glomerulus" style="margin-bottom:0;">
+      </div>
+
+      <div class="io-field-block">
+        <label class="io-field-label" for="headerInput">Header <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+        <input type="text" id="headerInput" class="modal-input" placeholder="Shown above the image on both sides" style="margin-bottom:0;">
+      </div>
+      <div class="io-field-block">
+        <label class="io-field-label" for="backExtraInput">Back Extra <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+        <textarea id="backExtraInput" class="modal-input" rows="2" placeholder="Extra context shown below the image, answer side only" style="margin-bottom:0;resize:vertical;"></textarea>
+      </div>
+
+      <div class="overlay-close-row" style="justify-content:space-between;">
+        <button type="button" class="brick-btn outline small" onclick="showScreen('screenWall'); renderTree();">Cancel</button>
+        <button type="button" class="brick-btn small" id="generateCardsBtn">Generate cards →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== SCREEN: BRICK PREVIEW ===================== -->
+  <div class="screen" id="screenPreview">
+    <button type="button" class="brick-btn outline icon-btn" id="previewBackBtn" aria-label="Back" style="margin-bottom:14px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="preview-wrap">
+      <div class="preview-hero">
+        <div class="preview-title" id="previewTitle">—</div>
+        <div class="preview-sub" id="previewSub">—</div>
+      </div>
+      <div class="stat-bricks">
+        <div class="stat-brick due"><div class="num" id="statDue">0</div><div class="lbl">Due</div></div>
+        <div class="stat-brick new"><div class="num" id="statNew">0</div><div class="lbl">New</div></div>
+        <div class="stat-brick"><div class="num" id="statTotal">0</div><div class="lbl">Total</div></div>
+      </div>
+      <div class="row-label">Time per card</div>
+      <div class="time-chips" id="previewTimeChips">
+        <button type="button" class="time-chip" data-secs="10">10s</button>
+        <button type="button" class="time-chip active" data-secs="20">20s</button>
+        <button type="button" class="time-chip" data-secs="40">40s</button>
+        <button type="button" class="time-chip" data-secs="0">No limit</button>
+      </div>
+      <button type="button" class="brick-btn full" id="startScrollBtn">Start brick</button>
+      <div class="launch-track" id="launchTrack"><div class="launch-fill" id="launchFill"></div></div>
+      <div class="launch-caption" id="launchCaption">unrolling — tap again to skip</div>
+    </div>
+  </div>
+
+  <!-- ===================== SCREEN: STUDY ===================== -->
+  <div class="screen" id="screenStudy">
+    <div class="study-head">
+      <button type="button" class="brick-btn outline icon-btn" id="studyBackBtn" aria-label="Back" style="width:32px;height:32px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span class="study-title" id="studyTitle">—</span>
+    </div>
+    <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
+    <div class="study-header-text" id="studyHeaderText"></div>
+    <div class="study-stage-wrap">
+      <div class="study-stage" id="studyStage" role="button" tabindex="0" aria-label="Tap to reveal occluded regions"></div>
+    </div>
+    <div class="study-footer-text" id="studyFooterText"></div>
+    <div class="tap-hint" id="studyTapHint">tap image to reveal</div>
+    <div class="grade-row" id="gradeRow">
+      <button type="button" class="brick-btn small" id="gradeAgain">Again</button>
+      <button type="button" class="brick-btn moss small" id="gradeGood">Good</button>
+    </div>
+  </div>
+
+  <!-- ===================== SCREEN: DONE ===================== -->
+  <div class="screen" id="screenDone">
+    <div class="done-wrap">
+      <div class="done-stamp">BRICK COMPLETE 🧱</div>
+      <div class="done-sub" id="doneSummary">—</div>
+      <div class="done-actions">
+        <button type="button" class="brick-btn" id="restartScrollBtn">Lay it again</button>
+        <button type="button" class="brick-btn outline" id="doneBackBtn">Back to wall</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== TILE DROPDOWN MENU (kebab) ===================== -->
+<div class="tile-menu" id="tileMenu" role="menu">
+  <button type="button" role="menuitem" id="menuOpen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    Open
+  </button>
+  <div class="menu-sep"></div>
+  <button type="button" role="menuitem" id="menuRename">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
+    Rename <span class="menu-kbd">R</span>
+  </button>
+  <button type="button" role="menuitem" id="menuMove">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l3 3 3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20M12 2v20"/></svg>
+    Move to… <span class="menu-kbd">M</span>
+  </button>
+  <button type="button" role="menuitem" id="menuDuplicate">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+    Duplicate
+  </button>
+  <div class="menu-sep"></div>
+  <button type="button" role="menuitem" class="danger" id="menuDelete">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+    Delete <span class="menu-kbd">Del</span>
+  </button>
+</div>
+
+<!-- ===================== RENAME MODAL ===================== -->
+<div class="overlay" id="renameOverlay" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+  <div class="overlay-modal">
+    <h3 id="renameTitle">Rename</h3>
+    <label for="renameInput" class="visually-hidden">New name</label>
+    <input type="text" id="renameInput" class="modal-input">
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small" id="cancelRenameBtn">Cancel</button>
+      <button type="button" class="brick-btn small" id="confirmRenameBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MOVE PICKER ===================== -->
+<div class="overlay" id="moveOverlay" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
+  <div class="overlay-modal">
+    <h3 id="moveTitle">Move "<span id="moveTargetName"></span>" to…</h3>
+    <div id="moveOptionList"></div>
+    <div class="overlay-close-row">
+      <button type="button" class="brick-btn outline small" id="cancelMoveBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== NAME MODAL (New Wall) ===================== -->
+<div class="overlay" id="nameOverlay" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
+  <div class="overlay-modal">
+    <h3 id="nameModalTitle">New Wall</h3>
+    <label for="nameModalInput" class="visually-hidden">Name</label>
+    <input type="text" id="nameModalInput" class="modal-input" placeholder="Name…">
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small cancel">Cancel</button>
+      <button type="button" class="brick-btn small" id="nameModalConfirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SHORTCUTS OVERLAY ===================== -->
+<div class="overlay" id="shortcutsOverlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+  <div class="overlay-modal">
+    <h3 id="shortcutsTitle">Keyboard shortcuts</h3>
+    <div class="shortcut-row"><span>Search this wall</span><kbd>/</kbd></div>
+    <div class="shortcut-row"><span>New Brick</span><kbd>N</kbd></div>
+    <div class="shortcut-row"><span>New Wall</span><kbd>W</kbd></div>
+    <div class="shortcut-row"><span>Open menu for focused tile</span><kbd>Shift+M</kbd></div>
+    <div class="shortcut-row"><span>Rename focused tile</span><kbd>R</kbd></div>
+    <div class="shortcut-row"><span>Move focused tile</span><kbd>M</kbd></div>
+    <div class="shortcut-row"><span>Delete focused tile</span><kbd>Delete</kbd></div>
+    <div class="shortcut-row"><span>Navigate tiles</span><kbd>↑ ↓ ← →</kbd></div>
+    <div class="shortcut-row"><span>Open focused tile</span><kbd>Enter</kbd></div>
+    <div class="shortcut-row"><span>In the editor: Select / Rectangle / Ellipse</span><kbd>V / R / O</kbd></div>
+    <div class="shortcut-row"><span>Close / go back</span><kbd>Esc</kbd></div>
+    <div class="shortcut-row"><span>This list</span><kbd>?</kbd></div>
+    <div class="overlay-close-row">
+      <button type="button" class="brick-btn small" id="closeShortcutsBtn">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="status-live" id="statusLive" role="status" aria-live="polite"></div>
+
+<script src="js/storage.js"></script>
+<script src="js/scheduler.js"></script>
+<script src="js/tree.js"></script>
+<script src="js/occlusion-editor.js"></script>
+<script src="js/study.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

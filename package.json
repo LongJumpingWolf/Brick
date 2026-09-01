@@ -1,0 +1,15 @@
+{
+  "name": "brick",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Image-occlusion cramming app — Anki-style Select/Rectangle/Ellipse editor, Wall/Brick file manager.",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000",
+    "test": "node test/smoketest.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1",
+    "fake-indexeddb": "^6.0.0"
+  }
+}
