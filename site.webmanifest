@@ -1,0 +1,15 @@
+{
+  "name": "Brick",
+  "short_name": "Brick",
+  "description": "Image occlusion cramming app with Basic and Cloze cards",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3ECDD",
+  "theme_color": "#B54B36",
+  "icons": [
+    { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512x512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

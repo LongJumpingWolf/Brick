@@ -4,6 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Brick — image occlusion cramming</title>
+
+<!-- Favicon / home-screen icons — all on a real white background,
+     generated from the same brick-logo SVG the topbar uses, at every
+     standard size browsers and OSes actually look for. -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48x48.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152x152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167x167.png">
+<link rel="mask-icon" href="favicon.ico" color="#B54B36">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#B54B36">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Brick">
+<meta name="msapplication-TileColor" content="#B54B36">
+<meta name="msapplication-TileImage" content="icons/mstile-72x72.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tokens.css">
@@ -34,7 +54,14 @@
     </div>
     <div class="topbar-spacer"></div>
     <button class="brick-btn outline icon-btn" id="cementModeBtn" aria-label="Toggle Cement Mode — study only cemented cards" title="Cement Mode (C)">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><rect x="7" y="8.5" width="4" height="7" rx="0.8"/><rect x="13" y="8.5" width="4" height="7" rx="0.8"/></svg>
+      <svg width="15" height="15" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="3" y="4" width="26" height="11" rx="1.5" fill="#A8ACA6" stroke="#6E7268" stroke-width="1"/>
+        <rect x="3" y="17" width="26" height="11" rx="1.5" fill="#8F938A" stroke="#6E7268" stroke-width="1"/>
+        <rect x="7" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>
+        <rect x="19" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>
+        <rect x="7" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/>
+        <rect x="19" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/>
+      </svg>
     </button>
     <button class="brick-btn outline icon-btn" id="shortcutsBtn" aria-label="Keyboard shortcuts (press ?)" title="Keyboard shortcuts (?)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
@@ -284,7 +311,14 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
       </button>
       <button type="button" class="brick-btn outline icon-btn study-tool-btn" id="cementBtn" aria-label="Cement (bookmark) this card" title="Cement — bookmark + Again (C)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="1.5"/><rect x="7" y="8.5" width="4" height="7" rx="0.8"/><rect x="13" y="8.5" width="4" height="7" rx="0.8"/></svg>
+        <svg width="15" height="15" viewBox="0 0 32 32" fill="none">
+          <rect x="3" y="4" width="26" height="11" rx="1.5" fill="#A8ACA6" stroke="#6E7268" stroke-width="1"/>
+          <rect x="3" y="17" width="26" height="11" rx="1.5" fill="#8F938A" stroke="#6E7268" stroke-width="1"/>
+          <rect x="7" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>
+          <rect x="19" y="6.5" width="6" height="6" rx="1" fill="#4A4D46"/>
+          <rect x="7" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/>
+          <rect x="19" y="19.5" width="6" height="6" rx="1" fill="#3E413B"/>
+        </svg>
       </button>
     </div>
     <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>

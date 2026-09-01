@@ -24,6 +24,14 @@ plus a card editor with three tabs:
 
 ```
 index.html                  shell — all screens + overlays live here
+favicon.ico                  multi-resolution (16/32/48) — browsers check this path directly
+site.webmanifest            PWA/home-screen manifest
+icons/
+  brick-master.svg           the source — same logo geometry as the topbar
+                             mark, scaled up onto a real white background
+  favicon-*.png, apple-touch-icon*.png, android-chrome-*.png,
+  icon-*.png, mstile-*.png    the full generated set, every standard
+                             size a browser/OS actually asks for
 css/
   tokens.css                 colors, shadows, texture, focus ring
   components.css              brick buttons, modals, tile menu, shared
