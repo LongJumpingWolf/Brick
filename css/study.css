@@ -41,7 +41,25 @@
 }
 .study-mask.revealed-box{ background:rgba(255,255,255,.06); border:1.5px dashed rgba(216,154,62,.7); }
 .study-mask.revealed-box.active-mask{ border-style:solid; border-color:var(--amber); box-shadow:0 0 0 2px rgba(216,154,62,.3); }
-.study-mask .mlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;font-size:11px;font-weight:700;color:var(--amber);text-shadow:0 1px 3px rgba(0,0,0,.7);}
+
+/* Label lives OUTSIDE the box, as an attached tab — not centered on
+   top of it. A label sitting inside the border covers exactly the
+   content it's meant to be labeling, which defeats the point of
+   revealing the region at all. */
+.study-mask .mlabel{
+  position:absolute; left:-1.5px; top:-24px;
+  background:var(--amber-dark); color:#fff;
+  font-family:'IBM Plex Sans',sans-serif; font-size:10.5px; font-weight:700;
+  padding:4px 9px; border-radius:5px 5px 5px 0;
+  max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  box-shadow:var(--shadow); z-index:2;
+}
+/* Near the top edge of the image, an upward tab would get clipped by
+   the stage's overflow:hidden — flip it below the box instead. */
+.study-mask .mlabel.tab-below{
+  top:auto; bottom:-24px;
+  border-radius:0 5px 5px 5px;
+}
 
 .study-footer-text{text-align:center;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--ink-soft);margin-bottom:16px;min-height:1.3em;}
 

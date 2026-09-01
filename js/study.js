@@ -105,6 +105,13 @@ function paintTextCard(c){
   }
   stage.innerHTML = '<div class="study-text-card"><div class="study-text-inner">' + html + '</div></div>';
 }
+/* Tabs pointing upward off a mask near the top edge would get clipped
+   by the stage's overflow:hidden — this threshold decides when to flip
+   the label below the box instead. Extracted as its own function so
+   the boundary condition is directly testable, not buried in a
+   template string. */
+function labelShouldTabBelow(maskY){ return maskY < 12; }
+
 function paintMasks(c){
   const stage = document.getElementById('studyStage');
   const img = stage.querySelector('img');
@@ -115,7 +122,8 @@ function paintMasks(c){
     else hidden = isActive && !session.revealed; // hide-one, guess one: only the active shape is ever hidden
     const shapeCls = m.shape === 'ellipse' ? ' shape-ellipse' : '';
     const cls = 'study-mask' + (hidden ? ' hidden-box' : ' revealed-box') + (isActive ? ' active-mask' : '') + shapeCls;
-    const label = hidden ? '' : '<span class="mlabel">' + escapeHtml(m.label || '?') + '</span>';
+    const tabCls = labelShouldTabBelow(m.y) ? ' tab-below' : '';
+    const label = hidden ? '' : '<span class="mlabel' + tabCls + '">' + escapeHtml(m.label || '?') + '</span>';
     return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + '</div>';
   }).join('');
   stage.innerHTML = (img ? img.outerHTML : '') + overlays;

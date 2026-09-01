@@ -394,6 +394,32 @@ async function main(){
   assert(evalInPage('basicStagedCards.length') === 0, 'reopening New Brick clears any previously staged Basic cards');
   assert(evalInPage('clozeStagedCards.length') === 0, 'reopening New Brick clears any previously staged Cloze cards');
 
+  // =========================================================
+  // Label tab positioning — outside the border, not covering content
+  // =========================================================
+  assert(evalInPage('labelShouldTabBelow(5)') === true, 'a mask near the top edge (y=5%) flips its label tab below');
+  assert(evalInPage('labelShouldTabBelow(50)') === false, 'a mask away from the top edge (y=50%) keeps its label tab above');
+  assert(evalInPage('labelShouldTabBelow(11.9)') === true, 'boundary just under the threshold flips below');
+  assert(evalInPage('labelShouldTabBelow(12)') === false, 'boundary exactly at the threshold stays above');
+
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true })); // reveal
+  await sleep(10);
+  const labels = doc.querySelectorAll('.study-mask .mlabel');
+  assert(labels.length === 3, 'all 3 revealed masks show a label tab (got ' + labels.length + ')');
+  assert(Array.from(labels).every(l => l.textContent.trim().length > 0), 'every label tab actually has text content');
+  // seeded masks are at y:44, y:39, y:80 — none near the top edge, so none should flip below
+  assert(doc.querySelectorAll('.study-mask .mlabel.tab-below').length === 0, 'none of the seeded (non-top-edge) masks flip their tab below');
+
+  const cssText = fs.readFileSync(path.join(ROOT, 'css/study.css'), 'utf-8');
+  assert(!/\.mlabel\{[^}]*inset:0/.test(cssText), 'label is no longer centered over the box interior (old inset:0 rule is gone)');
+  assert(/\.mlabel\{[^}]*top:-24px/.test(cssText), 'label is positioned outside the box, above it by default');
+  assert(/\.tab-below\{[^}]*bottom:-24px/.test(cssText), 'the flip-below variant positions outside the box on the other side');
+
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);
 }
