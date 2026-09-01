@@ -44,6 +44,26 @@
 .brick-btn:disabled{ opacity:.5; cursor:not-allowed; }
 .brick-btn:disabled:hover{ filter:none; }
 
+/* ---------- bare icon button: no card/box chrome at all — for icons
+   that should read as a logo mark (like the Cement glyph), the same
+   way the actual Brick wordmark's icon has no background box around
+   it either. Still a real, focusable, clickable button underneath —
+   just without the permanent visible "card" that .icon-btn normally
+   draws, with a light hover/active tint standing in as the only
+   affordance that it's interactive. ---------- */
+.brick-btn.bare-icon-btn{
+  width:30px; height:30px; padding:0;
+  background:none; border:none; box-shadow:none;
+  border-radius:6px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--ink); transition:background .12s ease;
+}
+.brick-btn.bare-icon-btn::after{ content:none; }
+.brick-btn.bare-icon-btn svg{ width:100%; height:100%; }
+.brick-btn.bare-icon-btn:hover{ background:rgba(43,36,32,.06); filter:none; }
+.brick-btn.bare-icon-btn:active{ background:rgba(43,36,32,.1); transform:none; }
+.brick-btn.bare-icon-btn.active{ background:rgba(216,154,62,.22); }
+
 .modal-input{width:100%;padding:10px 12px;border-radius:5px;border:none;background:var(--paper);
   box-shadow: inset 0 0 0 1.5px var(--mortar-dark);
   font-size:13.5px;color:var(--ink);outline:none;margin-bottom:16px;
