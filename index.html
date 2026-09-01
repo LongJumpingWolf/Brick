@@ -130,6 +130,7 @@
           <label class="io-field-label" for="backExtraInput">Back Extra <span style="text-transform:none;font-weight:400;">(optional)</span></label>
           <textarea id="backExtraInput" class="modal-input" rows="2" placeholder="Extra context shown below the image, answer side only" style="margin-bottom:0;resize:vertical;"></textarea>
         </div>
+        <button type="button" class="brick-btn outline small" id="addOcclusionCardsBtn">+ Add these shapes to brick</button>
       </div>
     </div>
 
@@ -172,8 +173,9 @@
       <div class="staged-card-list" id="clozeStagedList"></div>
     </div>
 
-    <!-- ===== shared: name + create, all three tabs ===== -->
-    <div class="row-label" style="margin-top:20px;">Brick name</div>
+    <!-- ===== shared: staged count + name + create, all three tabs ===== -->
+    <div class="staged-counter" id="stagedCounter">no cards staged yet</div>
+    <div class="row-label" style="margin-top:14px;">Brick name</div>
     <div style="margin-bottom:18px;">
       <input type="text" id="scrollNameInput" class="modal-input" placeholder="e.g. Kidney — Glomerulus" style="margin-bottom:0;">
     </div>

@@ -291,6 +291,7 @@ function initOcclusionEditor(){
   });
 
   document.getElementById('editorBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
+  document.getElementById('addOcclusionCardsBtn').addEventListener('click', addOcclusionShapesToStaged);
 
   // Anki-style tool hotkeys, active only while this screen is showing and no field has focus
   document.addEventListener('keydown', (e)=>{
@@ -316,11 +317,15 @@ function initOcclusionEditor(){
 }
 
 /* ---------- generate cards: one per shape, shared image + shape set ---------- */
-function generateOcclusionCards(){
+/* Adds the currently-drawn shapes as cards to the SHARED staged pile
+   for this brick (see basic-cloze.js) rather than finalizing a deck
+   immediately — you can keep adding more occlusion images, or switch
+   to the Basic/Cloze tab, and everything accumulates until you
+   explicitly hit "Create brick". After adding, resets back to the
+   upload step so a second image can be occluded into the same brick. */
+function addOcclusionShapesToStaged(){
   if (!editorImgHash){ announce('Upload an image first.'); return; }
   if (!editorShapes.length){ announce('Draw at least one shape.'); return; }
-  const name = document.getElementById('scrollNameInput').value.trim();
-  if (!name){ announce('Give this brick a name.'); document.getElementById('scrollNameInput').focus(); return; }
 
   const header = document.getElementById('headerInput').value.trim();
   const backExtra = document.getElementById('backExtraInput').value.trim();
@@ -331,12 +336,14 @@ function generateOcclusionCards(){
     header, backExtra,
     timeouts: 0, tough: false, createdAt: Date.now()
   }));
-  const folder = nodeById(editorTargetFolderId) || nodeById('root');
-  const deck = { id: uid(), type:'deck', name, createdAt: Date.now(), cards };
-  folder.children.push(deck);
-  saveTreeNow();
-  currentFolderId = folder.id;
-  announce('Brick forged — ' + cards.length + ' card' + (cards.length===1?'':'s') + '.');
-  showScreen('screenWall');
-  renderTree();
+  stagedCards.push(...cards);
+  announce(cards.length + ' card' + (cards.length===1?'':'s') + ' added — ' + stagedCards.length + ' staged for this brick so far.');
+  updateStagedCounter();
+
+  // back to a clean upload step, ready for another image if wanted
+  editorImgHash = null; editorShapes = []; selectedShapeId = null;
+  document.getElementById('headerInput').value = '';
+  document.getElementById('backExtraInput').value = '';
+  document.getElementById('editorUploadStep').style.display = '';
+  document.getElementById('editorMaskStep').style.display = 'none';
 }

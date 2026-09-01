@@ -1,20 +1,27 @@
 'use strict';
 /* =====================================================================
-   basic-cloze.js — the other two card types. Occlusion generates all
-   its cards in one shot from drawn shapes; Basic/Cloze instead let you
-   stage several cards (Add card to brick, repeatedly) before naming
-   the brick and creating it, which is the more natural authoring flow
-   for plain text cards. Both feed into the same tree.js deck creation
-   as occlusion does — see finishBrickCreation().
+   basic-cloze.js — the other two card types, AND the shared staging
+   pile all three tabs feed into.
+
+   Nothing finalizes a brick on its own anymore: Occlusion's "Add these
+   shapes", and Basic/Cloze's "Add card to brick", all push into the
+   one `stagedCards` array below. You can freely switch tabs — add a
+   cloze card, flip to Occlusion and mask an image, flip to Basic and
+   add a front/back — and NONE of it commits until you explicitly hit
+   the single shared "Create brick" button. That button used to be
+   type-specific and finalized immediately on the first card, which
+   made it impossible to mix card types into one brick.
    ===================================================================== */
 
 let editorCardType = 'occlusion';
-let basicStagedCards = [];
-let clozeStagedCards = [];
+let stagedCards = [];          // fully-formed card objects, any type, in the order added
+let basicStagedCards = [];     // raw {front,back} — kept separately so the Basic tab can preview/delete by content
+let clozeStagedCards = [];     // raw {text} — same reasoning for Cloze
 let lastFocusedEditorField = 'basicFrontInput';
 
 function resetBasicClozeState(){
   editorCardType = 'occlusion';
+  stagedCards = [];
   basicStagedCards = [];
   clozeStagedCards = [];
   document.getElementById('basicFrontInput').value = '';
@@ -23,6 +30,7 @@ function resetBasicClozeState(){
   updateClozePreview();
   renderBasicStagedList();
   renderClozeStagedList();
+  updateStagedCounter();
   setEditorCardType('occlusion');
 }
 
@@ -32,6 +40,13 @@ function setEditorCardType(type){
   document.getElementById('occlusionPane').style.display = type === 'occlusion' ? '' : 'none';
   document.getElementById('basicPane').style.display = type === 'basic' ? '' : 'none';
   document.getElementById('clozePane').style.display = type === 'cloze' ? '' : 'none';
+}
+
+function updateStagedCounter(){
+  const total = stagedCards.length + basicStagedCards.length + clozeStagedCards.length;
+  const el = document.getElementById('stagedCounter');
+  el.textContent = total === 0 ? 'no cards staged yet' : total + ' card' + (total===1?'':'s') + ' staged for this brick';
+  el.classList.toggle('has-cards', total > 0);
 }
 
 /* ---------- Basic ---------- */
@@ -49,6 +64,7 @@ function renderBasicStagedList(){
     btn.addEventListener('click', ()=>{
       basicStagedCards.splice(parseInt(btn.dataset.idx, 10), 1);
       renderBasicStagedList();
+      updateStagedCounter();
     });
   });
 }
@@ -61,13 +77,7 @@ function addBasicCard(){
   document.getElementById('basicBackInput').value = '';
   document.getElementById('basicFrontInput').focus();
   renderBasicStagedList();
-}
-function generateBasicCards(){
-  if (!basicStagedCards.length){ announce('Add at least one card first.'); return; }
-  const name = document.getElementById('scrollNameInput').value.trim();
-  if (!name){ announce('Give this brick a name.'); document.getElementById('scrollNameInput').focus(); return; }
-  const cards = basicStagedCards.map(c => ({ id: uid(), type:'basic', front:c.front, back:c.back, timeouts:0, tough:false, createdAt: Date.now() }));
-  finishBrickCreation(name, cards);
+  updateStagedCounter();
 }
 
 /* ---------- Cloze ---------- */
@@ -92,6 +102,7 @@ function renderClozeStagedList(){
     btn.addEventListener('click', ()=>{
       clozeStagedCards.splice(parseInt(btn.dataset.idx, 10), 1);
       renderClozeStagedList();
+      updateStagedCounter();
     });
   });
 }
@@ -103,33 +114,29 @@ function addClozeCard(){
   updateClozePreview();
   document.getElementById('clozeInput').focus();
   renderClozeStagedList();
-}
-function generateClozeCards(){
-  if (!clozeStagedCards.length){ announce('Add at least one card first.'); return; }
-  const name = document.getElementById('scrollNameInput').value.trim();
-  if (!name){ announce('Give this brick a name.'); document.getElementById('scrollNameInput').focus(); return; }
-  const cards = clozeStagedCards.map(c => ({ id: uid(), type:'cloze', text:c.text, timeouts:0, tough:false, createdAt: Date.now() }));
-  finishBrickCreation(name, cards);
+  updateStagedCounter();
 }
 
-/* ---------- shared finalize step (occlusion's generateOcclusionCards
-   duplicates this last part rather than calling it, since it also
-   needs the header/backExtra fields which don't apply here) ---------- */
-function finishBrickCreation(name, cards){
+/* ---------- shared finalize: combines everything staged across ALL
+   three tabs into one deck, in one shot ---------- */
+function createBrickFromAllStaged(){
+  const combined = [
+    ...stagedCards,
+    ...basicStagedCards.map(c => ({ id: uid(), type:'basic', front:c.front, back:c.back, timeouts:0, tough:false, createdAt: Date.now() })),
+    ...clozeStagedCards.map(c => ({ id: uid(), type:'cloze', text:c.text, timeouts:0, tough:false, createdAt: Date.now() })),
+  ];
+  if (!combined.length){ announce('Add at least one card first — on any tab.'); return; }
+  const name = document.getElementById('scrollNameInput').value.trim();
+  if (!name){ announce('Give this brick a name.'); document.getElementById('scrollNameInput').focus(); return; }
+
   const folder = nodeById(editorTargetFolderId) || nodeById('root');
-  const deck = { id: uid(), type:'deck', name, createdAt: Date.now(), cards };
+  const deck = { id: uid(), type:'deck', name, createdAt: Date.now(), cards: combined };
   folder.children.push(deck);
   saveTreeNow();
   currentFolderId = folder.id;
-  announce('Brick forged — ' + cards.length + ' card' + (cards.length===1?'':'s') + '.');
+  announce('Brick forged — ' + combined.length + ' card' + (combined.length===1?'':'s') + '.');
   showScreen('screenWall');
   renderTree();
-}
-
-function generateCardsForActiveTab(){
-  if (editorCardType === 'occlusion') generateOcclusionCards();
-  else if (editorCardType === 'basic') generateBasicCards();
-  else generateClozeCards();
 }
 
 function initBasicClozeEditor(){
@@ -147,8 +154,5 @@ function initBasicClozeEditor(){
   document.querySelectorAll('#clozePane .fmt-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> wrapSelection('clozeInput', btn.dataset.w));
   });
-  // The one "Create brick" button is shared across all three tabs —
-  // bound here (not in occlusion-editor.js) since this is the module
-  // that knows which tab is actually active.
-  document.getElementById('generateCardsBtn').addEventListener('click', generateCardsForActiveTab);
+  document.getElementById('generateCardsBtn').addEventListener('click', createBrickFromAllStaged);
 }

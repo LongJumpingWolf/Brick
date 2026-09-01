@@ -89,9 +89,13 @@ drives the full loop: create a Wall, open the occlusion editor, draw a
 rectangle and an ellipse, move and resize a shape via its handles,
 generate cards, study them, grade them, confirm a triple-timeout
 auto-tags a card Tough, confirm the active-mask color distinction in
-Hide All mode, stage and create Basic cards (with formatting), and
-stage and create Cloze cards (with correct front/back parsing). 79
-assertions, all currently passing.
+Hide All mode, stage and create Basic cards (with formatting), stage
+and create Cloze cards (with correct front/back parsing), confirm an
+Again-graded card requeues within the same session, confirm Space bar
+reveals then grades Good, confirm the label tab sits outside the mask
+border, and confirm mixing Cloze/Basic/Occlusion cards into one brick
+across tab switches — nothing finalizes early. 120+ assertions, all
+currently passing.
 
 ## Database / environment variables
 
@@ -107,6 +111,24 @@ SUPABASE_ANON_KEY as env vars) for the tree/review-log data, plus an
 api/upload-image.js serverless relay to ImgBB (IMGBB_API_KEY) for
 the images, same pattern Kardex already uses. Say the word and I'll
 build that as its own piece of work.
+
+## Study session behavior
+
+- **"Again" requeues the card in the same session.** SM-2 marking a
+  missed card "due now" only matters for a future session — within
+  the one you're actually running, a card graded Again reappears a few
+  cards later so you get another shot at it before the session ends,
+  rather than just vanishing until you manually restart the deck.
+- **Space bar** does double duty: reveals the card when it's hidden,
+  and grades Good when it's already revealed — one key covers the
+  whole rhythm of a review.
+- **Mixed card types in one brick.** Nothing finalizes a brick the
+  moment you add a card. Occlusion's "Add these shapes to brick" and
+  Basic/Cloze's "Add card to brick" all feed one shared staged pile —
+  switch tabs freely, add a cloze card, then an occlusion image, then
+  a basic card, all before naming the brick and hitting the single
+  "Create brick" button. A live counter near that button shows how
+  many cards are staged across all three tabs combined.
 
 ## Deploy
 

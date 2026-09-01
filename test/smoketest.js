@@ -179,18 +179,28 @@ async function main(){
   doc.querySelector('.mode-opt[data-mode="hide-one"]').dispatchEvent(new window.Event('click', { bubbles:true }));
   assert(evalInPage('editorMode') === 'hide-one', 'clicking "Hide One, Guess One" updates editorMode');
 
-  // Header / Back Extra fields + name, then generate
-  doc.getElementById('scrollNameInput').value = 'Generated Test Brick';
+  // Header / Back Extra fields, then the new two-step flow: Add these
+  // shapes to the staged pile FIRST (this must NOT finalize a brick by
+  // itself), only THEN does naming + Create brick finalize.
   doc.getElementById('headerInput').value = 'Test Header';
   doc.getElementById('backExtraInput').value = 'Extra context here';
   const folderBeforeGen = evalInPage('nodeById(currentFolderId).children.length');
+  doc.getElementById('addOcclusionCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('screenEditor').classList.contains('active'), 'adding shapes to the staged pile stays on the editor screen — does NOT finalize a brick yet');
+  assert(evalInPage('nodeById(currentFolderId).children.length') === folderBeforeGen, 'no brick was created just from adding shapes to staging');
+  assert(evalInPage('stagedCards.length') === 1, 'the one remaining shape was added to the shared staged pile');
+  assert(doc.getElementById('editorUploadStep').style.display !== 'none', 'occlusion pane resets to the upload step, ready for another image in the same brick');
+  assert(doc.getElementById('stagedCounter').textContent.includes('1 card'), 'the shared staged-count indicator reflects the addition — got "' + doc.getElementById('stagedCounter').textContent + '"');
+
+  doc.getElementById('scrollNameInput').value = 'Generated Test Brick';
   doc.getElementById('generateCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(20);
-  assert(doc.getElementById('screenWall').classList.contains('active'), 'generating cards returns to the Wall screen');
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'Create brick returns to the Wall screen');
   assert(evalInPage('nodeById(currentFolderId).children.length') === folderBeforeGen + 1, 'exactly one new brick was added');
   const newDeck = evalInPage(`nodeById(currentFolderId).children.find(c => c.name === 'Generated Test Brick')`);
   assert(!!newDeck, 'new brick has the typed name');
-  assert(newDeck.cards.length === 1, 'one remaining shape produced exactly one card (got ' + (newDeck && newDeck.cards.length) + ')');
+  assert(newDeck.cards.length === 1, 'one staged shape produced exactly one card (got ' + (newDeck && newDeck.cards.length) + ')');
   assert(newDeck.cards[0].mode === 'hide-one', 'generated card carries the chosen Hide One mode');
   assert(newDeck.cards[0].header === 'Test Header', 'generated card carries the Header field');
   assert(newDeck.cards[0].backExtra === 'Extra context here', 'generated card carries the Back Extra field');
@@ -229,17 +239,26 @@ async function main(){
   await sleep(20);
   assert(doc.getElementById('studyTitle').textContent.includes('2/3'), 'grading advances to card 2/3');
   studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  const cardFailedId = evalInPage('currentCard().id');
   doc.getElementById('gradeAgain').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(20);
-  assert(doc.getElementById('studyTitle').textContent.includes('3/3'), 'grading advances to card 3/3');
+  // Again requeues the card within THIS session — the denominator grows
+  // from 3 to 4 because the failed card comes back before the session ends,
+  // rather than just vanishing until some future SM-2-due session.
+  assert(doc.getElementById('studyTitle').textContent.includes('3/4'), 'grading Again grows the session (requeued, not just skipped) — shows 3/4, not 3/3 — got "' + doc.getElementById('studyTitle').textContent + '"');
   studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
   doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(20);
-  assert(doc.getElementById('screenDone').classList.contains('active'), 'finishing the last card shows Done');
-  assert(doc.getElementById('doneSummary').textContent.includes('2 good') && doc.getElementById('doneSummary').textContent.includes('1 to review again'), 'done summary correctly tallies 2 good / 1 again — got "' + doc.getElementById('doneSummary').textContent + '"');
+  assert(doc.getElementById('studyTitle').textContent.includes('4/4'), 'the 4th slot is the requeued card, back for another attempt — got "' + doc.getElementById('studyTitle').textContent + '"');
+  assert(evalInPage('currentCard().id') === cardFailedId, 'the card actually shown in the requeued slot IS the one that was failed, not some other card');
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('screenDone').classList.contains('active'), 'finishing the requeued card (this time passing it) shows Done');
+  assert(doc.getElementById('doneSummary').textContent.includes('3 good') && doc.getElementById('doneSummary').textContent.includes('1 to review again'), 'done summary correctly tallies 3 good / 1 again across 4 total review events — got "' + doc.getElementById('doneSummary').textContent + '"');
 
   const savedLog = JSON.parse(window.localStorage.getItem('brickReviewLog_v1'));
-  assert(savedLog.length === 3, 'all 3 review events persisted to the real review log (got ' + savedLog.length + ')');
+  assert(savedLog.length === 4, 'all 4 review events persisted to the real review log, including the requeued retry (got ' + savedLog.length + ')');
 
   // =========================================================
   // Timeout -> forced miss -> 3rd timeout auto-tough (SAME card, direct function calls)
@@ -393,6 +412,72 @@ async function main(){
   assert(evalInPage('editorCardType') === 'occlusion', 'reopening New Brick always resets to the Occlusion tab');
   assert(evalInPage('basicStagedCards.length') === 0, 'reopening New Brick clears any previously staged Basic cards');
   assert(evalInPage('clozeStagedCards.length') === 0, 'reopening New Brick clears any previously staged Cloze cards');
+  assert(evalInPage('stagedCards.length') === 0, 'reopening New Brick also clears any previously staged Occlusion cards');
+
+  // =========================================================
+  // THE core scenario reported: mixing card types into ONE brick in
+  // one continuous session, without any intermediate "Add" finalizing
+  // a deck early. Cloze → Basic → Occlusion, one Create brick at the end.
+  // =========================================================
+  const folderBeforeMixed = evalInPage('nodeById(currentFolderId).children.length');
+  doc.querySelector('.mode-tab[data-type="cloze"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('clozeInput').value = 'The [[femoral]] nerve innervates the quadriceps.';
+  doc.getElementById('addClozeCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(doc.getElementById('screenEditor').classList.contains('active'), 'adding a cloze card stays on the editor screen');
+  assert(evalInPage('nodeById(currentFolderId).children.length') === folderBeforeMixed, 'still no new brick created just from adding a cloze card');
+
+  doc.querySelector('.mode-tab[data-type="basic"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('basicFrontInput').value = 'Mixed-type front';
+  doc.getElementById('basicBackInput').value = 'Mixed-type back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(doc.getElementById('screenEditor').classList.contains('active'), 'adding a basic card ALSO stays on the editor screen');
+
+  doc.querySelector('.mode-tab[data-type="occlusion"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`
+    editorImgHash = 'demo-cell-diagram'; editorImgW = 600; editorImgH = 400;
+    document.getElementById('editorUploadStep').style.display = 'none';
+    document.getElementById('editorMaskStep').style.display = '';
+    editorShapes = [];
+    renderEditorShapes('data:image/svg+xml;base64,PHN2Zy8+');
+  `);
+  drag(40, 30, 120, 90); // same synthetic-drag helper used earlier in the file
+  assert(evalInPage('editorShapes.length') === 1, 'drew one occlusion shape for the mixed-type brick');
+  doc.getElementById('addOcclusionCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  assert(doc.getElementById('screenEditor').classList.contains('active'), 'adding the occlusion shape ALSO stays on the editor screen — three tabs contributed, still zero new bricks finalized');
+
+  assert(evalInPage('stagedCards.length + basicStagedCards.length + clozeStagedCards.length') === 3, 'all three tabs\' contributions sit in the combined staged count (1 occlusion + 1 basic + 1 cloze)');
+  assert(doc.getElementById('stagedCounter').textContent.includes('3 card'), 'the shared counter reflects all three tabs combined — got "' + doc.getElementById('stagedCounter').textContent + '"');
+
+  doc.getElementById('scrollNameInput').value = 'Mixed Type Brick';
+  doc.getElementById('generateCardsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const mixedDeck = evalInPage(`nodeById(currentFolderId).children.find(c => c.name === 'Mixed Type Brick')`);
+  assert(!!mixedDeck, 'the mixed-type brick was created');
+  assert(mixedDeck.cards.length === 3, 'it contains all three cards, one of each type (got ' + (mixedDeck && mixedDeck.cards.length) + ')');
+  const typesPresent = mixedDeck.cards.map(c => c.type).sort();
+  assert(JSON.stringify(typesPresent) === JSON.stringify(['basic','cloze','occlusion']), 'exactly one card of each type is present — got ' + JSON.stringify(typesPresent));
+
+  // =========================================================
+  // Spacebar: reveal when hidden, grade Good when already revealed
+  // =========================================================
+  runInPage(`openBrickPreview('${mixedDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('session.revealed') === false, 'card starts unrevealed');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { code:'Space', key:' ', bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('session.revealed') === true, 'first Space press reveals the card (same as tapping it)');
+  const posBeforeSpace = evalInPage('session.pos');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { code:'Space', key:' ', bubbles:true }));
+  await sleep(20);
+  assert(evalInPage('session.pos') === posBeforeSpace + 1, 'second Space press (after reveal) grades Good and advances — same effect as tapping the Good button');
+  const logAfterSpace = JSON.parse(window.localStorage.getItem('brickReviewLog_v1'));
+  assert(logAfterSpace[logAfterSpace.length - 1].good === true, 'the review event Space just logged is graded good:true (Space = Good after reveal)');
 
   // =========================================================
   // Label tab positioning — outside the border, not covering content

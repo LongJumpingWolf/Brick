@@ -212,6 +212,14 @@ function gradeCurrent(goodTapped){
   if (good) session.correct++; else session.missed++;
   if (session.timedOutThisAttempt && goodTapped) announce('Logged as a miss (timed out earlier)');
   clearInterval(session.tickId);
+  if (!good){
+    // Requeue within THIS session — SM-2 marking it due-now only matters
+    // for some FUTURE study session; without this, "Again" behaved
+    // identically to "Good" as far as the current run was concerned,
+    // since the card just vanished until you manually restarted.
+    const insertAt = Math.min(session.order.length, session.pos + 1 + 3);
+    session.order.splice(insertAt, 0, c.id);
+  }
   session.pos++;
   if (session.pos >= session.order.length) finishStudy();
   else renderStudyCard();
@@ -250,4 +258,17 @@ function initStudyScreens(){
 
   document.getElementById('restartScrollBtn').addEventListener('click', beginStudy);
   document.getElementById('doneBackBtn').addEventListener('click', ()=>{ showScreen('screenWall'); renderTree(); });
+
+  // Space: reveal when hidden, grade Good when already revealed —
+  // a single key that covers the whole rhythm of a review without
+  // reaching for the mouse or tabbing to a specific button.
+  document.addEventListener('keydown', (e)=>{
+    if (!document.getElementById('screenStudy').classList.contains('active')) return;
+    if (!session) return;
+    if (e.code === 'Space' || e.key === ' '){
+      e.preventDefault();
+      if (!session.revealed) toggleReveal();
+      else gradeCurrent(true);
+    }
+  });
 }
