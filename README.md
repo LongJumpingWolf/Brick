@@ -217,10 +217,18 @@ Trash-move coverage for the in-page sync: a deleted Brick's file
 actually leaves its original location, lands in a flat `Trash/`
 folder with a deletion timestamp in its name, still holds its real
 original content, and deleting the same name a second time coexists
-with the first trashed copy rather than overwriting it. Also added a
-watchdog timeout to this suite for the same reason described in the
-Companion Extension section below.
-459 assertions, all
+with the first trashed copy rather than overwriting it, and true
+per-file reconciliation for the in-page sync too: a forced resync
+with nothing genuinely different reports every file as unchanged and
+makes zero actual write() calls (confirmed at the filesystem-call
+level, not just the reported label), a mixed change (one edit, one
+new Brick) correctly produces one update and one create in the same
+sync, and the read-only Sync Preview makes zero writes of its own —
+confirmed by running a real sync immediately after and finding the
+same pending change still there. Also added a watchdog timeout to
+this suite for the same reason described in the Companion Extension
+section below.
+468 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -458,20 +466,24 @@ Gear icon in the top bar.
     dirty-check, retry/failure handling), deliberately written against
     a plain `api` object instead of calling `chrome.*` directly, so
     it's fully testable under plain Node — `node
-    test/background-core.test.js`, no browser needed, 26 assertions
-    covering the worst cases (no tab open, the bridge missing or not
-    ready yet, a version mismatch attempted anyway rather than refused
-    outright, one file failing without aborting the rest of the batch,
-    the fingerprint deliberately NOT persisted after a partial failure
-    so a real pending change can't get wrongly skipped next time,
-    overlapping syncs refused rather than left to race), and real
-    sync-with-Trash behavior matching the in-page version — a removed
-    file gets its content downloaded fresh to `Trash/` (there's no
-    "move" in this API, only download-new + `chrome.downloads.
-    removeFile()` on the original — which is why the full content of
-    every synced file, not just its path, has to be persisted between
-    runs, not only the path list) — 38 assertions total, run with
-    `node test/background-core.test.js` inside `brick-extension/`.
+    test/background-core.test.js`, no browser needed. Covers the worst
+    cases (no tab open, the bridge missing or not ready yet, a version
+    mismatch attempted anyway rather than refused outright, one file
+    failing without aborting the rest of the batch, the fingerprint
+    deliberately NOT persisted after a partial failure so a real
+    pending change can't get wrongly skipped next time, overlapping
+    syncs refused rather than left to race), real sync-with-Trash
+    behavior matching the in-page version — a removed file gets its
+    content downloaded fresh to `Trash/` (there's no "move" in this
+    API, only download-new + `chrome.downloads.removeFile()` on the
+    original — which is why the full content of every synced file,
+    not just its path, has to be persisted between runs, not only the
+    path list) — and true per-file reconciliation: a genuinely
+    unchanged file makes zero download() calls (confirmed at the
+    actual call level), verified inside one sync where one file is
+    unchanged, one updated, and one brand new all at once, each
+    getting its own independent, correct decision rather than one
+    verdict for the whole batch. 40 assertions total.
     Also worth noting honestly: writing these tests surfaced a real,
     separate bug in the test *harness* itself — an earlier test's mock
     silently hung on an unresolved promise partway through, which
@@ -482,6 +494,12 @@ Gear icon in the top bar.
     output. Fixed the specific test, and added a watchdog timeout to
     both this suite and Brick's own that turns any future version of
     that same mistake into a loud, unambiguous failure instead.
+    Also found and fixed a second real bug while adding per-file
+    comparison: every Brick export carries a fresh `exportedAt:
+    Date.now()`, so two exports of the exact same unchanged content
+    produced different JSON strings purely from when each happened to
+    run — meaning "unchanged" could never actually be detected until
+    that one volatile field was normalized out before comparing.
   - `background.js` — wires that logic to real `chrome.*` calls:
     `chrome.scripting.executeScript(..., { world: 'MAIN' })` to read
     `window.__brickBridge` directly from the Brick tab (content
@@ -491,6 +509,22 @@ Gear icon in the top bar.
     URL to actually write each file, `chrome.alarms` for the timer
     (survives service-worker restarts, unlike a plain `setInterval`
     would in Manifest V3).
+  - `close-signal.js` — a persistent content script (everything else
+    is on-demand injection) whose only job is telling the background
+    "this tab might be closing" via `visibilitychange`/`pagehide`, as
+    early as realistically possible. This is what makes closing the
+    *whole browser* — not just the Brick tab — trigger a sync, even
+    when Brick is sitting in a background tab at the time, since every
+    open tab runs its normal hide/unload lifecycle during shutdown,
+    not only the focused one. Genuinely best-effort, not a guarantee —
+    once a tab is truly gone, there's nothing left to inject into, so
+    it's a real race against page teardown, and that's said plainly in
+    the extension's own README rather than implied to be more reliable
+    than it is. Also said plainly: this one piece isn't unit-tested —
+    there's no real decision logic to extract (two DOM events firing
+    one fixed message), and the part that actually matters (does the
+    background receive it before the page dies) is real browser
+    page-lifecycle behavior no test harness here can simulate.
   - The Settings screen's "Download Companion Extension" button
     downloads the real thing now — points at
     `downloads/brick-companion-extension.zip` inside this project;

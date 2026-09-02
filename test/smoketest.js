@@ -2048,6 +2048,7 @@ async function main(){
   {
     const fakeFS = { type:'dir', children:{} };
     let fakePermission = 'granted';
+    let writeCallLog = []; // tracks every actual write, so tests can confirm unchanged files are genuinely skipped, not just reported as skipped
     function makeDirHandle(node, name){
       return {
         name, kind:'directory',
@@ -2097,7 +2098,7 @@ async function main(){
       return {
         name, kind:'file',
         async createWritable(){
-          return { async write(data){ node.content = data; }, async close(){} };
+          return { async write(data){ writeCallLog.push(name); node.content = data; }, async close(){} };
         },
         async getFile(){
           return { async text(){ return node.content; } };
@@ -2116,6 +2117,8 @@ async function main(){
         window3.showDirectoryPicker = async () => makeDirHandle(fakeFS, 'MockBackupFolder');
         window3.__setFakePermission = (p) => { fakePermission = p; };
         window3.__fakeFS = fakeFS;
+        window3.__getWriteCallLog = () => writeCallLog;
+        window3.__clearWriteCallLog = () => { writeCallLog = []; };
       }
     });
     const doc3 = dom3.window.document;
@@ -2245,6 +2248,76 @@ async function main(){
     assert(secondDeleteSync && secondDeleteSync.trashed === 1, 'the second deletion of the same original name also gets trashed — got ' + JSON.stringify(secondDeleteSync));
     const trashDirAfterSecond = evalInPage3(`window.__fakeFS.children['Trash']`);
     assert(Object.keys(trashDirAfterSecond.children).length === 2, 'both trashed copies exist side by side — the second deletion did not overwrite the first, thanks to the timestamp in each trash filename — got ' + Object.keys(trashDirAfterSecond.children).length);
+
+    // =========================================================
+    // Real per-file reconciliation: unchanged files are genuinely
+    // left alone (not rewritten), changed ones ARE, new ones get
+    // created — one-to-one comparison against actual on-disk
+    // content, not a blind "rewrite everything because something
+    // somewhere changed". Uses a dedicated fresh brick rather than
+    // "Cell Diagram (demo)" — that one was already deleted (twice)
+    // by the trash tests just above, so it no longer exists in the
+    // tree by this point.
+    // =========================================================
+    runInPage3(`
+      (async () => {
+        tree.children.push({ id: uid(), type:'folder', name:'Diff Test Wall', children:[
+          { id: uid(), type:'deck', name:'Diff Test Brick', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'original', back:'y', timeouts:0, tough:false }] }
+        ]});
+        saveTreeNow();
+        window.__diffTestSetupSync = await syncBackupFolder(true);
+      })();
+    `);
+    await sleep(80);
+    const diffTestSetupSync = evalInPage3('window.__diffTestSetupSync');
+    assert(diffTestSetupSync && diffTestSetupSync.created >= 1, 'sanity: the dedicated diff-test brick was actually created on the initial sync — got ' + JSON.stringify(diffTestSetupSync));
+
+    runInPage3(`window.__clearWriteCallLog();`);
+    runInPage3(`(async () => { window.__noopResync = await syncBackupFolder(true); })();`);
+    await sleep(80);
+    const noopResync = evalInPage3('window.__noopResync');
+    assert(noopResync && noopResync.unchanged >= 1 && noopResync.created === 0 && noopResync.updated === 0, 'forcing a resync with nothing actually different reports files as unchanged, not blindly recreated/updated — got ' + JSON.stringify(noopResync));
+    assert(evalInPage3('window.__getWriteCallLog()').length === 0, 'CRITICAL: confirms the skip was real at the filesystem level — zero actual write() calls happened, not just a label saying "unchanged" while rewriting anyway');
+
+    // now actually change the one card's content and add a second, brand-new Brick in the same Wall, then resync
+    runInPage3(`
+      (async () => {
+        const wall = tree.children.find(c => c.name === 'Diff Test Wall');
+        const brick = wall.children.find(c => c.name === 'Diff Test Brick');
+        brick.cards[0].front = 'genuinely changed content';
+        wall.children.push({ id: uid(), type:'deck', name:'Brand New Sibling Brick', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'x', back:'y', timeouts:0, tough:false }] });
+        saveTreeNow();
+        window.__mixedSync = await syncBackupFolder(true);
+      })();
+    `);
+    await sleep(80);
+    const mixedSync = evalInPage3('window.__mixedSync');
+    assert(mixedSync && mixedSync.updated === 1, 'the one genuinely-changed file is correctly detected and counted as updated — got ' + JSON.stringify(mixedSync));
+    assert(mixedSync && mixedSync.created === 1, 'the genuinely new sibling Brick is correctly detected and counted as created — got ' + JSON.stringify(mixedSync));
+
+    // =========================================================
+    // Sync preview: read-only, matches what an actual sync would do,
+    // without touching the filesystem at all
+    // =========================================================
+    runInPage3(`window.__clearWriteCallLog();`);
+    runInPage3(`
+      (async () => {
+        const wall = tree.children.find(c => c.name === 'Diff Test Wall');
+        const brick = wall.children.find(c => c.name === 'Diff Test Brick');
+        brick.cards[0].front = 'changed again for the preview test';
+        saveTreeNow();
+        window.__preview = await previewMirrorSync();
+      })();
+    `);
+    await sleep(80);
+    const preview = evalInPage3('window.__preview');
+    assert(preview && preview.ok === true, 'previewMirrorSync() succeeds — got ' + JSON.stringify(preview));
+    assert(preview.updated.length === 1 && preview.updated[0].includes('Diff Test Brick'), 'the preview correctly identifies which specific file would be updated — got ' + JSON.stringify(preview.updated));
+    assert(evalInPage3('window.__getWriteCallLog()').length === 0, 'CRITICAL: previewing makes ZERO actual writes — it only reads and reports, the tree change from this test is still sitting unsynced on disk after this call');
+    // confirm it really is still unsynced — an actual sync afterward should still find that same file needing an update
+    runInPage3(`(async () => { window.__afterPreviewSync = await syncBackupFolder(true); })();`);
+    await sleep(80);
+    assert(evalInPage3('window.__afterPreviewSync.updated') === 1, 'a real sync run right after the preview still finds the same one file needing an update — the preview truly changed nothing on disk');
 
     // permission handling: 'prompt' state should block syncing rather than silently failing or succeeding
     runInPage3(`window.__setFakePermission('prompt');`);
