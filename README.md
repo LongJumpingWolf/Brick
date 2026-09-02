@@ -133,14 +133,22 @@ close, phone locking), run the full ImgBB batch backup end to end with
 a mocked network (real batching, a deliberately-failing image that
 gets retried then correctly reported, no re-nagging on a simple
 re-save), and confirm a second touch mid-draw cancels the gesture and
-hands off to a manually-computed scroll rather than fighting it,
+confirms a second touch mid-draw cancels the gesture cleanly (and, as
+of this fix, that it does NOT attempt to drive scrolling manually —
+the tool that once caught the scroll call now confirms it's never
+made),
 confirm zoom is disabled, confirm Wall/Brick tiles render with their
 distinct textures, confirm the Done screen's brick wall actually lays
 bricks in sequence, shows its text only after finishing, loops, and
 clears its timers on exit, and confirm the ImgBB progress counter
 shows the real final result rather than a stale mid-upload snapshot (a
 real bug caught from an actual screenshot: it said "All 1 images
-backed up" right next to a contradictory "0 / 1"). 317 assertions, all
+backed up" right next to a contradictory "0 / 1"), and re-checks for
+any uncaught JS error across the ENTIRE run at the very end — not just
+early on, which is exactly the gap that let a genuinely missing
+variable declaration (`activePointers`/`twoFingerScrollRef` were only
+ever assigned, never declared with `let`) go unnoticed for a while.
+316 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -252,16 +260,21 @@ uses. Say the word and I'll build that as its own piece of work.
   hint field in the list below — a PowerPoint-style "just placed a text
   box, start typing" flow, without the added complexity/fragility of
   making the canvas shape itself directly editable in place.
-- **Two-finger scroll on touch.** The drawing stage disables native
-  touch gestures (`touch-action:none`) so a single finger never fights
-  the browser's own pan while drawing/moving/resizing a shape — but
-  that alone would also kill the ability to scroll the page on a phone
-  entirely. A second finger landing mid-gesture cancels whatever
-  single-finger action was in progress (no half-finished shape lingers)
-  and hands off to a manually-computed scroll based on the two
-  fingers' average movement, since `touch-action` can't distinguish
-  finger count on its own — native two-finger panning had to be
-  reimplemented by hand rather than conditionally toggled.
+- **A second finger cancels a draw in progress, cleanly.** The drawing
+  stage disables native touch gestures (`touch-action:none`) so a
+  single finger never fights the browser's own pan while
+  drawing/moving/resizing a shape. If a second finger lands mid-gesture
+  — say it rests near the image while you're drawing — the
+  single-finger action is cancelled outright rather than left
+  half-finished. An earlier version also tried to manually reimplement
+  two-finger scrolling on top of this (computing scroll deltas from the
+  two fingers' average movement), but that fought the browser's own
+  native touch/scroll handling whenever the second finger didn't land
+  precisely on the stage, causing a visible flicker. Removed for good
+  rather than patched — while actively touching the stage, scrolling
+  just isn't available, the same unsurprising limitation most
+  drawing/annotation surfaces have; lift your finger and scroll from
+  anywhere else on the page.
 
 ## Settings
 

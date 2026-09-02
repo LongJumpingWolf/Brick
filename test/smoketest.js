@@ -1310,7 +1310,7 @@ async function main(){
 
   const editorStage = doc.getElementById('ioStage');
   const editorCss = fs.readFileSync(path.join(ROOT, 'css/occlusion-editor.css'), 'utf-8');
-  assert(/touch-action:none/.test(editorCss), 'the stage disables native touch gestures so a single finger never fights the drawing logic — required for the two-finger handoff to make sense at all');
+  assert(/touch-action:none/.test(editorCss), 'the stage disables native touch gestures so a single finger never fights the drawing logic');
 
   // single finger starts a draw
   editorStage.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles:true, clientX:50, clientY:50, pointerId:10 }));
@@ -1327,19 +1327,19 @@ async function main(){
   assert(evalInPage('drawingPreview') === null, 'the draw preview is cleared — no half-finished shape lingers');
   const shapeCountAfterCancel = evalInPage('editorShapes.length');
 
-  // mock scrollBy to verify the manual two-finger scroll actually fires
+  // No manual scroll is attempted anymore — an earlier version drove
+  // window.scrollBy() itself here, which fought the browser's own
+  // native touch handling and caused a visible flicker. Removed for
+  // good rather than patched; confirm nothing calls it.
   runInPage(`window.__scrollCalls = []; window.scrollBy = (x,y) => window.__scrollCalls.push([x,y]);`);
-  editorStage.dispatchEvent(new window.PointerEvent('pointermove', { bubbles:true, clientX:50, clientY:20, pointerId:10 })); // this pointer moved up by 30px
+  editorStage.dispatchEvent(new window.PointerEvent('pointermove', { bubbles:true, clientX:50, clientY:20, pointerId:10 }));
   await sleep(10);
-  const scrollCalls = evalInPage('window.__scrollCalls');
-  assert(scrollCalls.length > 0, 'moving a finger while 2 are down triggers a manual scroll call, not shape drawing');
-  assert(scrollCalls[scrollCalls.length-1][1] > 0, 'fingers moving up (toward top of screen) scrolls the page DOWN (increasing scrollY), matching natural touch-scroll direction — got scrollBy(' + scrollCalls[scrollCalls.length-1] + ')');
+  assert(evalInPage('window.__scrollCalls.length') === 0, 'moving fingers while 2 are down does NOT call window.scrollBy — that manual scroll-driving was removed entirely, not just made more careful');
 
   // lifting one finger drops back to single-pointer mode
   editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:150, clientY:150, pointerId:20 }));
   await sleep(10);
   assert(evalInPage('activePointers.size') === 1, 'lifting one of two fingers leaves exactly one tracked');
-  assert(evalInPage('twoFingerScrollRef') === null, 'exiting two-finger mode clears the scroll reference point');
 
   editorStage.dispatchEvent(new window.PointerEvent('pointerup', { bubbles:true, clientX:50, clientY:20, pointerId:10 }));
   await sleep(10);
@@ -1413,6 +1413,14 @@ async function main(){
   doc.getElementById('doneBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
   assert(evalInPage('doneWallTimers.length') === 0, 'navigating away from the Done screen clears every pending timer — the animation does not keep running invisibly forever');
+
+  // A real gap just found: `errors` accumulates via a global listener
+  // but was only ever asserted twice, early on — anything thrown much
+  // later (like inside openOcclusionEditor, called dozens of times
+  // throughout this file) could silently accumulate without ever
+  // failing the suite. Checking it one final time here, at the very
+  // end, closes that gap for good.
+  assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);

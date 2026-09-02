@@ -27,21 +27,25 @@ let dragStartPct = null;     // {x,y} at pointerdown
 let dragOrigShape = null;    // snapshot of the shape being moved/resized
 let drawingPreview = null;   // {x,y,w,h} while actively drawing a new shape
 
-/* Two-finger scroll on touch devices: the stage has touch-action:none
-   so a single finger never fights the browser's own pan/zoom while
-   drawing/moving/resizing a shape — but that would also silently kill
-   the ability to scroll the page altogether on a phone, which is worse.
-   Tracking how many pointers are actually down lets a second finger
-   cancel whatever single-finger action was mid-flight and hand off to
-   a manually-computed scroll instead, so scrolling still works without
-   ever fighting the drawing gesture. */
+/* Tracks how many fingers are actually down. Used only so a second
+   finger landing mid-draw cleanly cancels the single-finger gesture
+   (no half-finished shape left behind) — NOT to drive scrolling
+   manually. An earlier attempt at that (computing scroll deltas from
+   the average pointer position and calling window.scrollBy) fought
+   the browser's own native touch handling whenever the second finger
+   didn't land precisely on the stage, causing a visible flicker as
+   two separate things tried to scroll the page at once. Removed for
+   good rather than patched — touch-action:none on the stage already
+   correctly stops a single finger from fighting the drawing gesture;
+   scrolling while actively touching the stage just isn't available,
+   the same unsurprising limitation most drawing/annotation surfaces
+   have. Lift your finger and scroll from anywhere else on the page. */
 let activePointers = new Map(); // pointerId -> {x,y}
-let twoFingerScrollRef = null;  // {x,y} average of all active pointers, updated every move
 
 function openOcclusionEditor(folderId){
   editorTargetFolderId = folderId;
   editorImgHash = null; editorShapes = []; editorTool = 'rect'; editorMode = 'hide-all'; selectedShapeId = null;
-  activePointers = new Map(); twoFingerScrollRef = null; // stale multi-touch tracking shouldn't leak into a fresh session
+  activePointers = new Map(); // stale multi-touch tracking shouldn't leak into a fresh session
   document.getElementById('editorUploadStep').style.display = '';
   document.getElementById('editorMaskStep').style.display = 'none';
   document.getElementById('scrollNameInput').value = '';
@@ -187,13 +191,6 @@ function renderShapeList(){
 }
 
 /* ---------- pointer interaction: draw / select / move / resize ---------- */
-function averagePointerPosition(){
-  const pts = Array.from(activePointers.values());
-  return {
-    x: pts.reduce((sum,p)=>sum+p.x, 0) / pts.length,
-    y: pts.reduce((sum,p)=>sum+p.y, 0) / pts.length
-  };
-}
 function cancelSingleFingerAction(){
   dragState = null; dragHandle = null; dragStartPct = null; dragOrigShape = null; drawingPreview = null;
   renderEditorShapes();
@@ -205,10 +202,11 @@ function initOcclusionEditor(){
     if (!editorImgHash) return;
     activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
     if (activePointers.size >= 2){
-      // A second finger just landed — hand off to manual scroll mode,
-      // abandoning whatever single-finger draw/move/resize was mid-flight.
+      // A second finger just landed — cancel whatever single-finger
+      // draw/move/resize was mid-flight, so no half-finished shape
+      // lingers. Scrolling itself is left to happen (or not) on its
+      // own; nothing here tries to drive it.
       cancelSingleFingerAction();
-      twoFingerScrollRef = averagePointerPosition();
       return;
     }
     try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported — degrade gracefully */ }
@@ -245,14 +243,7 @@ function initOcclusionEditor(){
 
   stage.addEventListener('pointermove', (e)=>{
     if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-    if (activePointers.size >= 2){
-      const avg = averagePointerPosition();
-      if (twoFingerScrollRef){
-        window.scrollBy(0, -(avg.y - twoFingerScrollRef.y));
-      }
-      twoFingerScrollRef = avg;
-      return;
-    }
+    if (activePointers.size >= 2) return; // 2+ fingers down — the draw was already cancelled on pointerdown, nothing to do here
     if (!dragState) return;
     const p = stagePct(e.clientX, e.clientY);
 
@@ -293,7 +284,6 @@ function initOcclusionEditor(){
 
   stage.addEventListener('pointerup', (e)=>{
     activePointers.delete(e.pointerId);
-    if (activePointers.size < 2) twoFingerScrollRef = null;
     if (activePointers.size >= 1) return; // still mid a multi-finger gesture — don't finalize a shape from a leftover finger lifting
     let justDrewShapeId = null;
     if (dragState === 'drawing' && drawingPreview){
@@ -316,7 +306,6 @@ function initOcclusionEditor(){
   });
   stage.addEventListener('pointercancel', (e)=>{
     activePointers.delete(e.pointerId);
-    if (activePointers.size < 2) twoFingerScrollRef = null;
     cancelSingleFingerAction();
   });
 
