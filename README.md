@@ -227,8 +227,14 @@ sync, and the read-only Sync Preview makes zero writes of its own —
 confirmed by running a real sync immediately after and finding the
 same pending change still there. Also added a watchdog timeout to
 this suite for the same reason described in the Companion Extension
-section below.
-468 assertions, all
+section below. And confirms the Cancel-during-deck-creation fix
+described in "Editor behavior" above actually protects the real
+reported scenario (a staged Basic card specifically, not just the
+occlusion path an incomplete first version of the fix would have
+covered) — no prompt when nothing's at risk, a real prompt naming
+what would be lost when something is, and declining it keeps
+everything genuinely intact rather than just keeping the screen open.
+478 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -362,6 +368,22 @@ uses. Say the word and I'll build that as its own piece of work.
 
 ## Editor behavior
 
+- **Canceling out of deck creation confirms first if anything's at
+  risk.** A real, reported data-loss bug: an accidental click on
+  Cancel while building a deck silently discarded it, with zero
+  warning — there was no confirmation at all before this. Checks all
+  four places at-risk work can actually live: staged Occlusion cards,
+  staged Basic cards, staged Cloze cards, and drawn-but-not-yet-added
+  occlusion shapes on the current image — the first version of this
+  fix only checked two of those four, missing the exact Basic-card
+  scenario that was actually reported, caught only because the test
+  written for this exercised the literal reported flow (add a Basic
+  card, click Cancel) rather than only the occlusion path. Nothing
+  staged or drawn: Cancel leaves immediately, no interruption. With
+  something at risk: a real confirmation naming specifically what
+  would be lost, and declining it keeps the editor open with
+  everything intact — verified directly, not just that the prompt
+  appears.
 - **Cloze `[[ ]]` toolbar button.** No selection: inserts an empty
   `[[]]` pair with the cursor sitting between them, ready to type. A
   real text selection: wraps exactly that text in brackets and keeps

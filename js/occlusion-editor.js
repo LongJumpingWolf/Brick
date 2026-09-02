@@ -208,8 +208,40 @@ function cancelSingleFingerAction(){
   dragState = null; dragHandle = null; dragStartPct = null; dragOrigShape = null; drawingPreview = null;
   renderEditorShapes();
 }
+/* Real data loss, reported directly: an accidental click on Cancel
+   during deck creation silently discarded a deck someone was
+   actively building, with zero warning — no confirmation existed at
+   all before this.
+
+   Checks ALL FOUR places at-risk work can actually live, not just
+   one — a real bug caught by testing the literal reported scenario
+   (adding a Basic card, then canceling) rather than only the
+   occlusion path: `stagedCards` holds only occlusion-type cards;
+   Basic and Cloze cards live in their own separate arrays
+   (basicStagedCards/clozeStagedCards) until the final "Create brick"
+   click merges everything — they are NOT in stagedCards at all until
+   that point. A version of this check that only looked at
+   stagedCards would have silently missed the exact Basic-card
+   scenario that was actually reported. */
+function cancelBrickEditor(){
+  const occlusionCount = stagedCards.length;
+  const basicCount = basicStagedCards.length;
+  const clozeCount = clozeStagedCards.length;
+  const unsavedShapeCount = editorShapes.length;
+  const stagedCount = occlusionCount + basicCount + clozeCount;
+  if (stagedCount > 0 || unsavedShapeCount > 0){
+    const parts = [];
+    if (stagedCount > 0) parts.push(stagedCount + ' staged card' + (stagedCount === 1 ? '' : 's'));
+    if (unsavedShapeCount > 0) parts.push(unsavedShapeCount + ' drawn region' + (unsavedShapeCount === 1 ? '' : 's') + ' not yet added');
+    if (!confirm('Discard ' + parts.join(' and ') + '? This brick hasn\'t been created yet — canceling now loses all of it.')) return;
+  }
+  showScreen('screenWall');
+  renderTree();
+}
+
 function initOcclusionEditor(){
   const stage = document.getElementById('ioStage');
+  document.getElementById('cancelBrickEditorBtn').addEventListener('click', cancelBrickEditor);
 
   stage.addEventListener('pointerdown', (e)=>{
     if (!editorImgHash) return;

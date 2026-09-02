@@ -2458,6 +2458,72 @@ async function main(){
     assert(dom4.window.__brickBridge.getTreeSummary().ok === false, 'getTreeSummary() correctly refuses before ready too, rather than returning something built on a not-yet-trustworthy tree');
   }
 
+  // =========================================================
+  // Cancel-during-deck-creation confirmation — a real, reported data
+  // loss: an accidental click on Cancel silently discarded a deck
+  // being actively built, with zero warning beforehand.
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  // --- case 1: nothing staged at all — Cancel should NOT prompt, just leave ---
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`window.__confirmCalls = []; window.confirm = (msg) => { window.__confirmCalls.push(msg); return true; };`);
+  doc.getElementById('cancelBrickEditorBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('window.__confirmCalls.length') === 0, 'canceling with nothing staged and nothing drawn does not prompt at all — no work exists to lose, so no interruption is needed');
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'and it does return to the Wall screen normally');
+
+  // --- case 2: real staged cards exist — Cancel MUST prompt, and confirming discards them ---
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.querySelector('.mode-tab[data-type="basic"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('basicFrontInput').value = 'At-risk front';
+  doc.getElementById('basicBackInput').value = 'At-risk back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('basicStagedCards.length') === 1, 'sanity: one real staged card exists before attempting to cancel');
+  runInPage(`window.__confirmCalls = []; window.confirm = (msg) => { window.__confirmCalls.push(msg); return true; };`);
+  doc.getElementById('cancelBrickEditorBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('window.__confirmCalls.length') === 1, 'canceling with a real staged card DOES prompt for confirmation — this is the exact scenario that was reported as silent data loss');
+  assert(evalInPage('window.__confirmCalls[0]').includes('1 staged card'), 'the prompt names specifically how much would be lost, not just a generic "are you sure" — got "' + evalInPage('window.__confirmCalls[0]') + '"');
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'confirming the prompt does proceed back to the Wall screen');
+
+  // --- case 3: user says "no, stay" on the confirmation — the staged
+  // card must survive, and the editor must NOT navigate away ---
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.querySelector('.mode-tab[data-type="basic"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('basicFrontInput').value = 'Must survive';
+  doc.getElementById('basicBackInput').value = 'Must survive back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`window.confirm = () => false;`); // "stay, don't discard"
+  doc.getElementById('cancelBrickEditorBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('screenEditor').classList.contains('active'), 'declining the confirmation keeps the editor open — Cancel must not navigate away when the person chose to stay');
+  assert(evalInPage('basicStagedCards.length') === 1 && evalInPage('basicStagedCards[0].front') === 'Must survive', 'the staged card genuinely still exists after declining — nothing was silently lost in the process of showing the prompt itself');
+  runInPage(`window.confirm = () => true;`); // restore the default for the rest of the suite
+
+  // --- case 4: drawn-but-not-yet-added occlusion shapes ALSO count as at-risk work, not just staged cards ---
+  doc.getElementById('cancelBrickEditorBtn').dispatchEvent(new window.Event('click', { bubbles:true })); // clear the previous session first
+  await sleep(10);
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`editorImgHash = 'demo-cell-diagram'; editorImgW = 600; editorImgH = 400;`);
+  runInPage(`editorShapes.push({ id: uid(), shape:'rect', x:10, y:10, w:20, h:20, label:'Drawn but not added', hint:'' }); renderEditorShapes();`);
+  await sleep(10);
+  runInPage(`window.__confirmCalls = []; window.confirm = (msg) => { window.__confirmCalls.push(msg); return true; };`);
+  doc.getElementById('cancelBrickEditorBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('window.__confirmCalls.length') === 1, 'a drawn-but-not-yet-added occlusion shape ALSO triggers the confirmation, even with zero staged cards — this is real unsaved work too');
+  assert(evalInPage('window.__confirmCalls[0]').includes('1 drawn region'), 'the prompt correctly describes it as a drawn region, distinct from a staged card — got "' + evalInPage('window.__confirmCalls[0]') + '"');
+
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
