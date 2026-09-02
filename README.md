@@ -212,8 +212,15 @@ companion-extension download button is a real link (not JS-only)
 pointing at a stable path, and — since that button's whole point is
 avoiding a silent placeholder — confirming the file actually at that
 path is the real extension (manifest, background, background-core,
-popup all present) and not the placeholder anymore.
-453 assertions, all
+popup all present) and not the placeholder anymore, plus real
+Trash-move coverage for the in-page sync: a deleted Brick's file
+actually leaves its original location, lands in a flat `Trash/`
+folder with a deletion timestamp in its name, still holds its real
+original content, and deleting the same name a second time coexists
+with the first trashed copy rather than overwriting it. Also added a
+watchdog timeout to this suite for the same reason described in the
+Companion Extension section below.
+459 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -457,7 +464,24 @@ Gear icon in the top bar.
     outright, one file failing without aborting the rest of the batch,
     the fingerprint deliberately NOT persisted after a partial failure
     so a real pending change can't get wrongly skipped next time,
-    overlapping syncs refused rather than left to race).
+    overlapping syncs refused rather than left to race), and real
+    sync-with-Trash behavior matching the in-page version — a removed
+    file gets its content downloaded fresh to `Trash/` (there's no
+    "move" in this API, only download-new + `chrome.downloads.
+    removeFile()` on the original — which is why the full content of
+    every synced file, not just its path, has to be persisted between
+    runs, not only the path list) — 38 assertions total, run with
+    `node test/background-core.test.js` inside `brick-extension/`.
+    Also worth noting honestly: writing these tests surfaced a real,
+    separate bug in the test *harness* itself — an earlier test's mock
+    silently hung on an unresolved promise partway through, which
+    doesn't crash a Node script, it just leaves the async test runner
+    permanently suspended while the process still exits with code 0
+    the moment nothing else is scheduled — indistinguishable from
+    success unless you notice assertions are quietly missing from the
+    output. Fixed the specific test, and added a watchdog timeout to
+    both this suite and Brick's own that turns any future version of
+    that same mistake into a loud, unambiguous failure instead.
   - `background.js` — wires that logic to real `chrome.*` calls:
     `chrome.scripting.executeScript(..., { world: 'MAIN' })` to read
     `window.__brickBridge` directly from the Brick tab (content
@@ -499,12 +523,17 @@ Gear icon in the top bar.
     forced re-sync with no real change makes zero writes.
   - **Same-named Bricks in the same Wall get disambiguated** (`Name
     (2).json`) rather than one silently overwriting the other.
-  - **Never auto-deletes.** Deleting a Brick in the app does not
-    remove its mirrored file — only adds and overwrites, on purpose.
-    A stray leftover backup file for something you've since deleted is
-    a far safer failure mode than a sync bug that deletes a real
-    backup, so the tradeoff is made deliberately in favor of keeping
-    too much rather than risking removing something you wanted.
+  - **Real sync, with a Trash — not silent accumulation.** Deleting a
+    Brick in the app moves its mirrored file into a flat `Trash/`
+    folder at the backup root, rather than either leaving it stale
+    where it was or actually discarding it. Each trashed file's name
+    is its original path folded flat plus a deletion timestamp, so
+    deleting → recreating → deleting the same name again can never
+    silently overwrite an earlier trashed copy — verified directly:
+    doing exactly that leaves both trashed copies sitting side by
+    side, each holding its own distinct original content. Mirrors the
+    app's own Recycle Bin — gone from where it was, fully recoverable
+    until you go and empty `Trash/` yourself.
   - Re-granting permission (if the browser ever revokes it, e.g. after
     being closed a while) requires an actual click — browsers require
     a real user gesture for that, so it can never happen silently, no

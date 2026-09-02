@@ -12,10 +12,15 @@
    throwing, so the rest of the app is completely unaffected on
    browsers that don't have it.
 
-   Deliberately does NOT delete files for content removed from the
-   app — only ever adds or overwrites. A stale extra backup file is a
-   far safer failure mode than a sync bug that deletes someone's real
-   backup. This is a considered tradeoff, not an oversight.
+   Deleting something in the app moves the matching mirror file to a
+   flat Trash/ folder inside the same backup root instead of leaving
+   it stale where it was — real sync, not just accumulation, while
+   still never actually discarding anything. Each trashed file gets a
+   timestamp baked into its name, so deleting → recreating → deleting
+   the same name again can never silently overwrite an earlier trashed
+   copy of it. This mirrors the app's own Recycle Bin: gone from where
+   it was, fully recoverable until someone actually goes and empties
+   Trash/ themselves.
    ===================================================================== */
 
 const BACKUP_FS_SUPPORTED = typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
@@ -151,10 +156,24 @@ async function syncBackupFolder(force){
   try {
     const snapshot = JSON.parse(currentJson);
     const plan = await computeMirrorPlan(snapshot);
+    const freshPaths = new Set(plan.map(e => e.relativePath));
+
+    // computed BEFORE writing the fresh plan, so a file that's simply
+    // being updated (still present, content changed) is never
+    // mistaken for something that was removed from the app
+    const existingPaths = await listExistingMirrorPaths(handle, '');
+    let trashed = 0;
+    for (const existingPath of existingPaths){
+      if (!freshPaths.has(existingPath)){
+        await moveToTrashFSA(handle, existingPath);
+        trashed++;
+      }
+    }
+
     await writeMirrorPlanToFSA(handle, plan);
     lastSyncedTreeJson = currentJson;
     localStorage.setItem('brickBackupFolderLastSync_v1', JSON.stringify({ syncedAt: Date.now() }));
-    return { ok:true, reason:'synced' };
+    return { ok:true, reason:'synced', trashed };
   } catch (err){
     console.warn('Backup folder sync failed (non-fatal — the in-browser backups and manual Export are unaffected)', err);
     return { ok:false, reason:'error', error: String(err) };
@@ -217,6 +236,49 @@ async function writeMirrorPlanToFSA(rootHandle, plan){
     await writable.write(entry.content);
     await writable.close();
   }
+}
+
+/* ---------- trash: real sync, not just accumulation ----------
+   Flat, not nested — every trashed file lands directly in Trash/,
+   with its original path folded into the filename (slashes become
+   " - ") plus a timestamp, rather than replicating the Wall folder
+   structure inside Trash/ too. Keeps Trash/ simple to actually look
+   through, and makes the timestamp-uniqueness guarantee trivial —
+   no risk of two different original paths colliding on the way in. */
+async function listExistingMirrorPaths(dirHandle, prefix){
+  let paths = [];
+  for await (const [name, entryHandle] of dirHandle.entries()){
+    if (prefix === '' && name === 'Trash') continue; // never treat Trash/ itself as mirror content to diff against
+    const relPath = prefix + name;
+    if (entryHandle.kind === 'directory'){
+      paths = paths.concat(await listExistingMirrorPaths(entryHandle, relPath + '/'));
+    } else if (entryHandle.kind === 'file'){
+      paths.push(relPath);
+    }
+  }
+  return paths;
+}
+function trashFileName(relativePath){
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const flat = relativePath.replace(/\//g, ' - ').replace(/\.json$/, '');
+  return flat + ' (deleted ' + stamp + ').json';
+}
+async function moveToTrashFSA(rootHandle, relativePath){
+  const segments = relativePath.split('/');
+  const fileName = segments.pop();
+  let dirHandle = rootHandle;
+  for (const seg of segments) dirHandle = await dirHandle.getDirectoryHandle(seg);
+  const fileHandle = await dirHandle.getFileHandle(fileName);
+  const file = await fileHandle.getFile();
+  const content = await file.text();
+
+  const trashDir = await rootHandle.getDirectoryHandle('Trash', { create:true });
+  const trashFile = await trashDir.getFileHandle(trashFileName(relativePath), { create:true });
+  const writable = await trashFile.createWritable();
+  await writable.write(content);
+  await writable.close();
+
+  await dirHandle.removeEntry(fileName);
 }
 
 /* ---------- triggers: periodic timer + tab close/hide ----------

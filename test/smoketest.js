@@ -2067,6 +2067,28 @@ async function main(){
           }
           return makeFileHandle(node.children[childName], childName);
         },
+        async removeEntry(childName){
+          if (!node.children[childName]) throw new Error('NotFoundError');
+          delete node.children[childName];
+        },
+        // real FileSystemDirectoryHandle.entries() is an async
+        // iterator of [name, handle] pairs — this mock needs the same
+        // shape so listExistingMirrorPaths() can walk it exactly the
+        // way it walks a real handle
+        entries(){
+          const names = Object.keys(node.children);
+          let i = 0;
+          return {
+            [Symbol.asyncIterator](){ return this; },
+            async next(){
+              if (i >= names.length) return { done:true, value:undefined };
+              const childName = names[i++];
+              const childNode = node.children[childName];
+              const childHandle = childNode.type === 'dir' ? makeDirHandle(childNode, childName) : makeFileHandle(childNode, childName);
+              return { done:false, value:[childName, childHandle] };
+            }
+          };
+        },
         async queryPermission(){ return fakePermission; },
         async requestPermission(){ return fakePermission; }
       };
@@ -2076,6 +2098,9 @@ async function main(){
         name, kind:'file',
         async createWritable(){
           return { async write(data){ node.content = data; }, async close(){} };
+        },
+        async getFile(){
+          return { async text(){ return node.content; } };
         }
       };
     }
@@ -2178,7 +2203,9 @@ async function main(){
     const collisionFileNames = Object.keys(collisionDir.children);
     assert(collisionFileNames.includes('Same Name.json') && collisionFileNames.some(n => n === 'Same Name (2).json'), 'two same-named Bricks in one Wall get disambiguated with a "(2)" suffix rather than one silently overwriting the other — got ' + JSON.stringify(collisionFileNames));
 
-    // deletion safety: removing a Brick from the app must NOT remove its mirrored file
+    // real sync: removing a Brick from the app moves its mirrored file
+    // to Trash/ (flat, timestamped) rather than leaving it stale where
+    // it was OR silently destroying it outright
     const cellDiagramId = evalInPage3(`tree.children.find(c=>c.name==='Demo Wall').children.find(c=>c.name==='Cell Diagram (demo)').id`);
     runInPage3(`
       (async () => {
@@ -2189,7 +2216,35 @@ async function main(){
       })();
     `);
     await sleep(50);
-    assert(evalInPage3(`window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json']`) !== undefined, 'the mirrored file for a Brick since deleted in the app is left alone, not auto-removed — a stray backup file is a far safer failure mode than an automated deletion');
+    assert(evalInPage3(`window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json']`) === undefined, 'the mirrored file no longer sits at its original location — this is real sync now, not just accumulation');
+    const afterDeleteSync = evalInPage3('window.__afterDeleteSync');
+    assert(afterDeleteSync && afterDeleteSync.trashed === 1, 'the sync result reports exactly one file trashed — got ' + JSON.stringify(afterDeleteSync));
+    const trashDirAfterDelete = evalInPage3(`window.__fakeFS.children['Trash']`);
+    assert(!!trashDirAfterDelete, 'a Trash folder was created at the backup root');
+    const trashedNames = Object.keys(trashDirAfterDelete.children);
+    assert(trashedNames.length === 1 && trashedNames[0].startsWith('Demo Wall - Cell Diagram (demo)') && trashedNames[0].includes('(deleted '), 'the trashed file is named after its original path (flattened) with a deletion timestamp, sitting flat in Trash/ rather than nested — got ' + JSON.stringify(trashedNames));
+    const trashedContent = JSON.parse(trashDirAfterDelete.children[trashedNames[0]].content);
+    assert(trashedContent.tree && trashedContent.images, 'the trashed file still holds the REAL content — nothing was lost, just relocated');
+
+    // deleting-recreating-deleting the same name again must never
+    // silently overwrite the earlier trashed copy
+    runInPage3(`
+      (async () => {
+        const parent = tree.children.find(c=>c.name==='Demo Wall');
+        parent.children.push({ id: uid(), type:'deck', name:'Cell Diagram (demo)', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'second incarnation', back:'y', timeouts:0, tough:false }] });
+        saveTreeNow();
+        await syncBackupFolder(true);
+        const parent2 = tree.children.find(c=>c.name==='Demo Wall');
+        parent2.children = parent2.children.filter(c => c.name !== 'Cell Diagram (demo)');
+        saveTreeNow();
+        window.__secondDeleteSync = await syncBackupFolder(true);
+      })();
+    `);
+    await sleep(80);
+    const secondDeleteSync = evalInPage3('window.__secondDeleteSync');
+    assert(secondDeleteSync && secondDeleteSync.trashed === 1, 'the second deletion of the same original name also gets trashed — got ' + JSON.stringify(secondDeleteSync));
+    const trashDirAfterSecond = evalInPage3(`window.__fakeFS.children['Trash']`);
+    assert(Object.keys(trashDirAfterSecond.children).length === 2, 'both trashed copies exist side by side — the second deletion did not overwrite the first, thanks to the timestamp in each trash filename — got ' + Object.keys(trashDirAfterSecond.children).length);
 
     // permission handling: 'prompt' state should block syncing rather than silently failing or succeeding
     runInPage3(`window.__setFakePermission('prompt');`);
@@ -2335,4 +2390,21 @@ async function main(){
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
   process.exit(failures ? 1 : 0);
 }
-main().catch(err => { console.error('SMOKE TEST CRASHED:', err); process.exit(1); });
+// Same reasoning as the companion extension's test suite: a test that
+// silently hangs on an unresolved promise doesn't crash — main() just
+// stays permanently suspended while the process exits with code 0 the
+// moment the event loop has nothing else scheduled, which looks
+// exactly like success. Found that exact failure mode once already
+// (in the extension's tests, not this file) — adding the same
+// safety net here too rather than leaving this much larger suite
+// without it. Deliberately not unref()'d — it has to be the one
+// thing keeping the process alive long enough to complain if main()
+// itself is what's stuck.
+const smokeTestWatchdog = setTimeout(() => {
+  console.error('\n=== TEST SUITE TIMED OUT — main() never completed (a promise is likely stuck unresolved somewhere) ===');
+  process.exit(1);
+}, 60000); // this suite does far more real work (many JSDOM boots, IndexedDB, etc.) than the extension's — a longer ceiling avoids false positives on a slower machine
+
+main()
+  .then(() => clearTimeout(smokeTestWatchdog))
+  .catch(err => { clearTimeout(smokeTestWatchdog); console.error('SMOKE TEST CRASHED:', err); process.exit(1); });
