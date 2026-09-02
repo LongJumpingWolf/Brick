@@ -1,6 +1,7 @@
 /* ===================== BRICK BUTTON ===================== */
 .brick-btn{
   position:relative;
+  display:inline-block; text-decoration:none; text-align:center; /* .brick-btn is also used on <a> tags (e.g. the extension download link) — buttons get this for free, anchors need it explicit */
   border:none; border-radius:4px;
   padding:12px 20px;
   font-family:'IBM Plex Sans',sans-serif;

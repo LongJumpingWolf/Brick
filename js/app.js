@@ -240,6 +240,7 @@ async function boot(){
   initStudyScreens();
   initSettingsScreen();
   initImgbbBackup();
+  initBackupFolderTriggers();
   initShortcutsOverlay();
   initLogoSwitcher();
   initGlobalHotkeys();
@@ -249,5 +250,7 @@ async function boot(){
   document.getElementById('saveFailedAckBtn').addEventListener('click', ()=> closeOverlay('saveFailedOverlay'));
   document.getElementById('saveFailedExportBtn').addEventListener('click', ()=>{ closeOverlay('saveFailedOverlay'); openSettings(); openExportPicker(); });
   checkDataRecoveryNoticeAtBoot();
+
+  markBridgeReady(); // last, on purpose — isReady() should only ever be true once EVERYTHING above has actually run
 }
 boot();

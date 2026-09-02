@@ -66,6 +66,9 @@ js/
   study.js                     preview + study/review loop, all 3 card types
   import-export.js             bundle build/parse — selective export,
                                fresh-ID import merge
+  backup-folder.js              File System Access API — on-disk mirror
+                               of the whole tree, one folder per Wall,
+                               one file per Brick, kept in sync automatically
   settings.js                   Settings screen UI: recycle bin list,
                                export picker, import handling, ImgBB key form
   imgbb-backup.js               pending-image detection, the mandatory
@@ -86,7 +89,7 @@ that's entirely inside `import-export.js`. Files are loaded as plain
 `index.html` matters**: `storage.js`, `scheduler.js`, `text-format.js`
 first (no dependencies on the others), then `tree.js` /
 `occlusion-editor.js` / `basic-cloze.js` / `study.js` /
-`import-export.js` / `settings.js` / `imgbb-backup.js` (depend on
+`import-export.js` / `backup-folder.js` / `settings.js` / `imgbb-backup.js` (depend on
 those three), then `app.js` last (calls the `init...()` function each
 of the other files
 exports).
@@ -194,8 +197,20 @@ session, manual restore-from-backup in Settings actually changing and
 persisting the live tree, and — the most rigorous test in the whole
 file — a genuine second boot in a fresh JSDOM instance with corrupted
 data pre-seeded before any script runs, proving the full recovery
-pipeline works end-to-end rather than just the isolated function.
-416 assertions, all
+pipeline works end-to-end rather than just the isolated function, and
+— the largest single addition — the Linked Backup Folder feature
+against a real mock of the File System Access API (jsdom has zero
+support for it, confirmed directly), covering the actual on-disk
+folder/file mirroring, that a mirrored file is genuinely self-
+contained by feeding it back through the real import path, the dirty-
+check correctly skipping unchanged re-syncs, same-name collision
+handling, confirming deleted-in-app content's mirror file is
+deliberately left alone rather than auto-removed, permission lapsing
+being refused rather than silently mishandled, and `pagehide` alone
+triggering a real sync with no explicit call, plus confirming the
+companion-extension download button is a real link (not JS-only)
+pointing at a stable path.
+435 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -420,6 +435,58 @@ Gear icon in the top bar.
   contents intact, listed with Restore and Delete Forever per item,
   plus an Empty Recycle Bin button. Restore puts it back where it came
   from, or at the top level if that Wall no longer exists.
+- **Companion Extension (in progress).** A browser extension is the
+  more reliable path to automatic on-disk backup than the in-page
+  folder link below — `chrome.downloads` permission is granted once at
+  install and doesn't have the periodic re-confirmation the File
+  System Access API applies to a directory handle. Meant to be loaded
+  unpacked via Developer Mode, not published — this is a personal
+  tool. The Settings screen already has a real "Download Companion
+  Extension" button pointing at a stable path
+  (`downloads/brick-companion-extension.zip`) — right now that file is
+  a placeholder (a `.zip` with just a README explaining it isn't ready
+  yet, so the button downloads something honest instead of 404ing or
+  silently doing nothing). Dropping the real extension at that exact
+  path is a file swap, not a code change — the button needs nothing
+  else touched once it exists. **Whether the Linked Backup Folder
+  section below stays, once the extension exists, hasn't been decided
+  yet** — noting that explicitly rather than assuming either way.
+- **Linked Backup Folder.** The closest thing to a real answer to
+  "what if I just forget to export" — a genuine, live, on-disk mirror
+  of the whole Wall/Brick tree, kept in sync automatically. Desktop
+  Chrome/Edge/Opera only (the File System Access API this needs
+  doesn't exist in Firefox, Safari, or on any mobile browser — the
+  section hides itself with a plain explanation on unsupported
+  browsers rather than showing broken controls).
+  - **One real folder per Wall, one real `.json` file per Brick** —
+    not a single giant export blob. Each file is a complete,
+    self-contained single-Brick export on its own (same shape
+    `buildExportBundle()` already produces for a normal selective
+    export), so any one of them can be individually re-imported later
+    without this feature being involved at all — verified directly: a
+    mirrored file, fed straight back into the real import path in
+    testing, imports correctly on its own.
+  - **Syncs on a timer (every 5 minutes) AND on `pagehide`/tab-hide** —
+    deliberately both, not one or the other: a timer alone misses "the
+    tab got closed a minute after the last sync"; close-events alone
+    miss "left it open for hours, then the browser crashed before ever
+    formally closing". A cheap dirty-check (compare against the tree
+    state at the last successful sync) means firing often costs
+    nothing when nothing's actually changed — confirmed directly: a
+    forced re-sync with no real change makes zero writes.
+  - **Same-named Bricks in the same Wall get disambiguated** (`Name
+    (2).json`) rather than one silently overwriting the other.
+  - **Never auto-deletes.** Deleting a Brick in the app does not
+    remove its mirrored file — only adds and overwrites, on purpose.
+    A stray leftover backup file for something you've since deleted is
+    a far safer failure mode than a sync bug that deletes a real
+    backup, so the tradeoff is made deliberately in favor of keeping
+    too much rather than risking removing something you wanted.
+  - Re-granting permission (if the browser ever revokes it, e.g. after
+    being closed a while) requires an actual click — browsers require
+    a real user gesture for that, so it can never happen silently, no
+    matter how automatic the rest of the sync is. A "Reconnect" button
+    appears in place of the normal controls when this is needed.
 
 ## Import file format
 

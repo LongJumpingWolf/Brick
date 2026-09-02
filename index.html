@@ -145,6 +145,50 @@
 
     <div class="settings-section">
       <div class="settings-section-head">
+        <h3>Companion Extension</h3>
+        <p class="settings-section-sub">
+          A browser extension is the more reliable path to automatic on-disk backup — permission is
+          granted once at install and doesn't need periodic reconfirming the way the in-page folder
+          link below does. Loaded unpacked via Developer Mode (<code>chrome://extensions</code> →
+          "Load unpacked"), not published — this is a personal tool, not a public one.
+        </p>
+      </div>
+      <div class="settings-row">
+        <a class="brick-btn small" id="downloadExtensionBtn" href="downloads/brick-companion-extension.zip" download>Download Companion Extension</a>
+      </div>
+      <p class="settings-status" id="extensionDownloadStatus">Placeholder for now — not the real extension yet.</p>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
+        <h3>Linked Backup Folder</h3>
+        <p class="settings-section-sub" id="backupFolderIntro">
+          A real, live mirror of this whole Wall/Brick tree on disk — one actual folder per Wall,
+          one actual file per Brick, kept in sync automatically (every few minutes, and whenever this
+          tab closes or goes to the background) so there's no button to remember to click. Each
+          Brick's file is a normal Brick export on its own, so it can be individually re-imported
+          later without needing this whole feature. Desktop Chrome/Edge/Opera only — the browser API
+          this needs doesn't exist in Firefox, Safari, or on mobile. Existing files for content you've
+          since deleted in the app are left alone rather than auto-removed, on purpose — a stray extra
+          backup file is a far safer mistake than one that deletes something for you.
+        </p>
+      </div>
+      <div id="backupFolderUnsupported" style="display:none;">
+        <p class="settings-status">Not available in this browser — use Export above instead.</p>
+      </div>
+      <div id="backupFolderControls" style="display:none;">
+        <p class="settings-status" id="backupFolderStatus"></p>
+        <div class="settings-row" style="margin-top:10px;">
+          <button type="button" class="brick-btn small" id="linkBackupFolderBtn">Link a folder…</button>
+          <button type="button" class="brick-btn outline small" id="syncBackupFolderBtn" style="display:none;">Sync now</button>
+          <button type="button" class="brick-btn outline small" id="reconnectBackupFolderBtn" style="display:none;">Reconnect</button>
+          <button type="button" class="brick-btn outline small danger-outline" id="unlinkBackupFolderBtn" style="display:none;">Unlink</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
         <h3>Recycle Bin</h3>
         <p class="settings-section-sub">Deleted Walls and Bricks land here first — nothing is destroyed outright until you empty it.</p>
       </div>
@@ -570,6 +614,8 @@
 <script src="js/basic-cloze.js"></script>
 <script src="js/study.js"></script>
 <script src="js/import-export.js"></script>
+<script src="js/backup-folder.js"></script>
+<script src="js/extension-bridge.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/imgbb-backup.js"></script>
 <script src="js/app.js"></script>

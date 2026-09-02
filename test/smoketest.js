@@ -47,7 +47,7 @@ async function main(){
     return v;
   }
 
-  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/import-export.js','js/settings.js','js/imgbb-backup.js','js/app.js'];
+  const scriptOrder = ['js/storage.js','js/scheduler.js','js/text-format.js','js/tree.js','js/occlusion-editor.js','js/basic-cloze.js','js/study.js','js/import-export.js','js/backup-folder.js','js/extension-bridge.js','js/settings.js','js/imgbb-backup.js','js/app.js'];
   scriptOrder.forEach(rel => runInPage(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
   await sleep(300); // let boot()'s async seedDemoImage() settle
 
@@ -2033,6 +2033,290 @@ async function main(){
     doc2.getElementById('dataRecoveryAckBtn').dispatchEvent(new dom2.window.Event('click', { bubbles:true }));
     await sleep(10);
     assert(!doc2.getElementById('dataRecoveryOverlay').classList.contains('active'), '"I understand" dismisses the notice once acknowledged');
+  }
+
+  // =========================================================
+  // Linked Backup Folder — File System Access API, mocked (jsdom has
+  // no support for it at all, confirmed directly before building this:
+  // typeof window.showDirectoryPicker === 'undefined'). Since
+  // BACKUP_FS_SUPPORTED is computed ONCE at script-load time, the mock
+  // has to be in place via beforeParse — genuine function closures,
+  // not string-injected — BEFORE backup-folder.js ever loads, in a
+  // fresh JSDOM instance, same reasoning as the data-recovery
+  // second-boot test above.
+  // =========================================================
+  {
+    const fakeFS = { type:'dir', children:{} };
+    let fakePermission = 'granted';
+    function makeDirHandle(node, name){
+      return {
+        name, kind:'directory',
+        async getDirectoryHandle(childName, opts){
+          opts = opts || {};
+          if (!node.children[childName]){
+            if (!opts.create) throw new Error('NotFoundError');
+            node.children[childName] = { type:'dir', children:{} };
+          }
+          return makeDirHandle(node.children[childName], childName);
+        },
+        async getFileHandle(childName, opts){
+          opts = opts || {};
+          if (!node.children[childName]){
+            if (!opts.create) throw new Error('NotFoundError');
+            node.children[childName] = { type:'file', content:'' };
+          }
+          return makeFileHandle(node.children[childName], childName);
+        },
+        async queryPermission(){ return fakePermission; },
+        async requestPermission(){ return fakePermission; }
+      };
+    }
+    function makeFileHandle(node, name){
+      return {
+        name, kind:'file',
+        async createWritable(){
+          return { async write(data){ node.content = data; }, async close(){} };
+        }
+      };
+    }
+
+    const dom3 = new JSDOM(html, {
+      url: 'http://localhost/index.html', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true,
+      beforeParse(window3){
+        window3.Element.prototype.getBoundingClientRect = function(){ return { left:0, top:0, width:400, height:300, right:400, bottom:300 }; };
+        window3.indexedDB = window3.indexedDB || global.indexedDB;
+        if (!window3.crypto) Object.defineProperty(window3, 'crypto', { value: webcrypto, configurable: true });
+        else if (!window3.crypto.subtle) window3.crypto.subtle = webcrypto.subtle;
+        // the mock itself — real closures over `fakeFS`, defined before ANY app script (including backup-folder.js) has loaded
+        window3.showDirectoryPicker = async () => makeDirHandle(fakeFS, 'MockBackupFolder');
+        window3.__setFakePermission = (p) => { fakePermission = p; };
+        window3.__fakeFS = fakeFS;
+      }
+    });
+    const doc3 = dom3.window.document;
+    function runInPage3(code){ const el = doc3.createElement('script'); el.textContent = code; doc3.body.appendChild(el); }
+    function evalInPage3(expr){ runInPage3('window.__r3 = (' + expr + ');'); const v = dom3.window.__r3; dom3.window.__r3 = undefined; return v; }
+    scriptOrder.forEach(rel => runInPage3(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
+    await sleep(300);
+
+    // Real FileSystemDirectoryHandle objects have special browser-
+    // internal structured-clone support that lets them be stored in
+    // IndexedDB directly — a plain mock object with function
+    // properties has no such support, and IndexedDB's real clone
+    // algorithm rejects it (DataCloneError, since functions aren't
+    // cloneable). That's a genuine capability of real native handles
+    // this environment can't fake, not a bug in the app's own
+    // storeFolderHandle()/getStoredFolderHandle() — swapping them for
+    // a simple in-memory stand-in tests everything else (the actual
+    // sync/mirror logic, which is the part that matters) without
+    // needing a real native handle. Has to happen AFTER backup-folder.js
+    // has loaded — its own function declarations would otherwise
+    // clobber an earlier override, since a later plain assignment is
+    // what correctly supersedes an existing global binding, not the
+    // reverse.
+    runInPage3(`
+      window.__mockHandleStorage = null;
+      storeFolderHandle = async (handle) => { window.__mockHandleStorage = handle; };
+      getStoredFolderHandle = async () => window.__mockHandleStorage;
+      clearStoredFolderHandle = async () => { window.__mockHandleStorage = null; };
+    `);
+    await sleep(10);
+
+    assert(evalInPage3('BACKUP_FS_SUPPORTED') === true, 'with the mock in place before load, the feature correctly detects itself as supported');
+
+    // link + initial sync
+    runInPage3(`(async () => { window.__linkedHandle = await linkBackupFolder(); window.__syncResult = await syncBackupFolder(true); })();`);
+    await sleep(100);
+    assert(evalInPage3('window.__linkedHandle') !== null, 'linking succeeds against the mocked picker');
+    const syncResult1 = evalInPage3('window.__syncResult');
+    assert(syncResult1 && syncResult1.ok === true, 'the initial sync reports success — got ' + JSON.stringify(syncResult1));
+
+    // structure check: the mock filesystem should now mirror the seeded demo tree
+    const fsSnapshot1 = evalInPage3('window.__fakeFS');
+    const demoWallDir = fsSnapshot1.children['Demo Wall'];
+    assert(!!demoWallDir && demoWallDir.type === 'dir', 'a real directory was created matching the seeded "Demo Wall" folder');
+    const brickFile = demoWallDir.children['Cell Diagram (demo).json'];
+    assert(!!brickFile && brickFile.type === 'file', 'a real .json file was created matching the seeded Brick, inside the correct Wall directory');
+    const brickFileParsed = JSON.parse(brickFile.content);
+    assert(brickFileParsed.tree && brickFileParsed.images && Object.keys(brickFileParsed.images).length > 0, 'the written file is a genuine, self-contained Brick export — same shape as a normal selective export, including its image');
+
+    // dirty-check: syncing again with nothing changed and force=false
+    // should skip actual writing — checked BEFORE the re-import
+    // verification below, since importBundle() genuinely mutates the
+    // tree (that's the whole point of it), which would otherwise make
+    // "nothing changed" false by the time this ran
+    runInPage3(`window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json'].content = 'UNCHANGED_MARKER';`);
+    runInPage3(`(async () => { window.__syncResult2 = await syncBackupFolder(false); })();`);
+    await sleep(50);
+    const syncResult2 = evalInPage3('window.__syncResult2');
+    assert(syncResult2 && syncResult2.reason === 'unchanged', 'syncing again with nothing changed and force=false correctly skips re-writing — got ' + JSON.stringify(syncResult2));
+    assert(evalInPage3(`window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json'].content`) === 'UNCHANGED_MARKER', 'confirms the skip was real — the file was genuinely not touched, not just reported as skipped');
+    // restore real content now that the dirty-check is confirmed, so the next test reads genuine data
+    runInPage3(`(async () => { await syncBackupFolder(true); })();`);
+    await sleep(50);
+
+    // that file should itself be re-importable, standing completely on its own
+    runInPage3(`currentFolderId = 'root';`);
+    runInPage3(`(async () => { window.__reimportCounts = await importBundle(JSON.parse(window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json'].content)); })();`);
+    await sleep(50);
+    const reimportCounts = evalInPage3('window.__reimportCounts');
+    assert(reimportCounts && reimportCounts.bricks === 1, 'the mirrored file, fed straight back into the real import path, works — proving it is genuinely self-contained, not just structurally similar');
+
+    // name collision handling: two same-named Bricks in the same Wall
+    runInPage3(`
+      (async () => {
+        tree.children.push({ id: uid(), type:'folder', name:'Collision Test Wall', children:[
+          { id: uid(), type:'deck', name:'Same Name', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'A', back:'A', timeouts:0, tough:false }] },
+          { id: uid(), type:'deck', name:'Same Name', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'B', back:'B', timeouts:0, tough:false }] }
+        ]});
+        saveTreeNow();
+        window.__collisionSync = await syncBackupFolder(true);
+      })();
+    `);
+    await sleep(100);
+    const collisionDir = evalInPage3(`window.__fakeFS.children['Collision Test Wall']`);
+    const collisionFileNames = Object.keys(collisionDir.children);
+    assert(collisionFileNames.includes('Same Name.json') && collisionFileNames.some(n => n === 'Same Name (2).json'), 'two same-named Bricks in one Wall get disambiguated with a "(2)" suffix rather than one silently overwriting the other — got ' + JSON.stringify(collisionFileNames));
+
+    // deletion safety: removing a Brick from the app must NOT remove its mirrored file
+    const cellDiagramId = evalInPage3(`tree.children.find(c=>c.name==='Demo Wall').children.find(c=>c.name==='Cell Diagram (demo)').id`);
+    runInPage3(`
+      (async () => {
+        const parent = tree.children.find(c=>c.name==='Demo Wall');
+        parent.children = parent.children.filter(c => c.id !== '${cellDiagramId}');
+        saveTreeNow();
+        window.__afterDeleteSync = await syncBackupFolder(true);
+      })();
+    `);
+    await sleep(50);
+    assert(evalInPage3(`window.__fakeFS.children['Demo Wall'].children['Cell Diagram (demo).json']`) !== undefined, 'the mirrored file for a Brick since deleted in the app is left alone, not auto-removed — a stray backup file is a far safer failure mode than an automated deletion');
+
+    // permission handling: 'prompt' state should block syncing rather than silently failing or succeeding
+    runInPage3(`window.__setFakePermission('prompt');`);
+    runInPage3(`(async () => { window.__promptSync = await syncBackupFolder(true); })();`);
+    await sleep(50);
+    assert(evalInPage3('window.__promptSync.reason') === 'needs-permission', 'when permission has lapsed to "prompt", sync correctly refuses rather than silently doing nothing or crashing — got ' + JSON.stringify(evalInPage3('window.__promptSync')));
+    runInPage3(`window.__setFakePermission('granted');`); // restore for the remaining checks
+
+    // pagehide / visibilitychange actually trigger a sync on their own,
+    // not just when explicitly called
+    runInPage3(`
+      tree.children.push({ id: uid(), type:'folder', name:'Trigger Test Wall', children:[
+        { id: uid(), type:'deck', name:'Trigger Test Brick', createdAt: Date.now(), cards:[{ id: uid(), type:'basic', front:'x', back:'y', timeouts:0, tough:false }] }
+      ]});
+      saveTreeNow();
+    `);
+    await sleep(10);
+    assert(evalInPage3(`window.__fakeFS.children['Trigger Test Wall']`) === undefined, 'sanity: the new content has not been mirrored yet — nothing has triggered a sync since the change');
+    dom3.window.dispatchEvent(new dom3.window.Event('pagehide'));
+    await sleep(50);
+    assert(evalInPage3(`window.__fakeFS.children['Trigger Test Wall']`) !== undefined, 'pagehide alone (no explicit syncBackupFolder call) triggers a real sync that picks up the new content');
+
+    // unlink actually clears the stored handle
+    runInPage3(`(async () => { await unlinkBackupFolder(); window.__handleAfterUnlink = await getStoredFolderHandle(); })();`);
+    await sleep(50);
+    assert(evalInPage3('window.__handleAfterUnlink') == null, 'unlinking actually clears the stored folder handle');
+  }
+
+  // =========================================================
+  // Companion extension download button
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  await sleep(10);
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  const extBtn = doc.getElementById('downloadExtensionBtn');
+  assert(!!extBtn, 'the companion-extension download button exists in Settings');
+  assert(extBtn.tagName === 'A', 'it is a real link, not a JS-only button — works even if something else on the page has misbehaved');
+  assert(extBtn.getAttribute('href') === 'downloads/brick-companion-extension.zip', 'points at a stable, predictable path — dropping the real extension there later needs no code changes to this button at all');
+  assert(extBtn.hasAttribute('download'), 'has the download attribute, so clicking it saves the file rather than navigating to it');
+  doc.getElementById('settingsBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
+  // Extension bridge — the Brick-side API surface an extension would
+  // actually call. Boot has long since finished by this point in the
+  // suite, so isReady()/version are checked against the REAL running
+  // app state, not a fresh contrived one.
+  // =========================================================
+  assert(evalInPage('typeof window.__brickBridge') === 'object', 'window.__brickBridge exists as a real object, not just a planned API');
+  assert(evalInPage('window.__brickBridge.version') === 1, 'exposes an explicit version number, so a future incompatible change is detectable rather than silently wrong');
+  assert(evalInPage('window.__brickBridge.isReady()') === true, 'isReady() is true — boot has genuinely finished by this point');
+
+  // an earlier test (the save-failure simulation) deliberately reset
+  // tree to an empty root — seed known, deterministic content here
+  // rather than assume whatever's left over from tests long since
+  // passed, so every bridge assertion below tests real content, not
+  // an accidental degenerate empty-tree case
+  runInPage(`
+    (async () => {
+      window.__bridgeSeedStep = 'start';
+      try {
+        // a plain Basic card needs no image at all — no reason to
+        // route through image storage (and its jsdom limitations)
+        // for a test that doesn't need one
+        tree.children.push({ id: uid(), type:'folder', name:'Bridge Test Wall', children:[
+          { id: uid(), type:'deck', name:'Bridge Test Brick', createdAt: Date.now(), cards:[
+            { id: uid(), type:'basic', front:'Bridge test front', back:'Bridge test back', timeouts:0, tough:false }
+          ]}
+        ]});
+        window.__bridgeSeedStep = 'before-save';
+        saveTreeNow();
+        window.__bridgeSeedStep = 'done';
+        window.__bridgeSeedReady = true;
+      } catch (err){
+        window.__bridgeSeedError = String(err && err.stack || err);
+        window.__bridgeSeedStep = 'errored';
+      }
+    })();
+  `);
+  await sleep(200);
+  assert(evalInPage('window.__bridgeSeedReady') === true, 'known content seeded for the bridge tests — error: ' + evalInPage('window.__bridgeSeedError') + ' step: ' + evalInPage('window.__bridgeSeedStep'));
+
+  const summary = evalInPage('window.__brickBridge.getTreeSummary()');
+  assert(summary.ok === true, 'getTreeSummary() succeeds — got ' + JSON.stringify(summary));
+  const realCounts = evalInPage('countBundleContents(tree)');
+  assert(summary.bricks === realCounts.bricks && summary.cards === realCounts.cards, 'summary counts match the real tree exactly — got ' + JSON.stringify(summary) + ' vs real ' + JSON.stringify(realCounts));
+  assert(summary.bricks > 0, 'sanity: the summary reflects genuinely non-empty seeded content, not an empty tree passing trivially');
+  assert(typeof summary.fingerprint === 'string' && summary.fingerprint.length > 0, 'includes a fingerprint an extension can diff against what it saw last time, to skip needless full rebuilds');
+
+  runInPage(`(async () => { window.__bridgePlan = await window.__brickBridge.getMirrorPlan(); })();`);
+  await sleep(200);
+  const bridgePlan = evalInPage('window.__bridgePlan');
+  assert(bridgePlan.ok === true, 'getMirrorPlan() succeeds — got ' + JSON.stringify(bridgePlan.reason || 'ok'));
+  assert(Array.isArray(bridgePlan.files) && bridgePlan.files.length > 0, 'returns a real, non-empty file list matching the actual current tree');
+  assert(bridgePlan.files.every(f => typeof f.relativePath === 'string' && f.relativePath.endsWith('.json') && typeof f.content === 'string'), 'every entry has the expected shape — a real relative path ending in .json, and real string content');
+
+  // a returned entry has to be genuinely, independently importable —
+  // not just structurally similar to a real export
+  const oneBridgeFile = bridgePlan.files[0];
+  runInPage(`currentFolderId = 'root'; (async () => { try { window.__bridgeReimport = await importBundle(JSON.parse(${JSON.stringify(oneBridgeFile.content)})); } catch (err) { window.__bridgeReimportError = String(err); } })();`);
+  await sleep(50);
+  const bridgeReimport = evalInPage('window.__bridgeReimport');
+  assert(bridgeReimport && bridgeReimport.bricks === 1, 'a file the bridge returned, fed straight back through the real import path, actually works on its own — got ' + JSON.stringify(bridgeReimport) + ' error: ' + evalInPage('window.__bridgeReimportError'));
+
+  // isReady() correctly reflects "not ready" before boot — tested for
+  // real, not by hand-copying the logic: a fresh instance loaded up
+  // to (but NOT including) app.js, so markBridgeReady() genuinely
+  // never runs, then checking the actual function's real pre-boot
+  // return value.
+  {
+    const dom4 = new JSDOM(html, {
+      url: 'http://localhost/index.html', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true,
+      beforeParse(window4){
+        window4.Element.prototype.getBoundingClientRect = function(){ return { left:0, top:0, width:400, height:300, right:400, bottom:300 }; };
+        window4.indexedDB = window4.indexedDB || global.indexedDB;
+        if (!window4.crypto) Object.defineProperty(window4, 'crypto', { value: webcrypto, configurable: true });
+        else if (!window4.crypto.subtle) window4.crypto.subtle = webcrypto.subtle;
+      }
+    });
+    const doc4 = dom4.window.document;
+    function runInPage4(code){ const el = doc4.createElement('script'); el.textContent = code; doc4.body.appendChild(el); }
+    const scriptsBeforeAppJs = scriptOrder.filter(rel => rel !== 'js/app.js');
+    scriptsBeforeAppJs.forEach(rel => runInPage4(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
+    await sleep(100);
+    assert(dom4.window.__brickBridge.isReady() === false, 'with app.js (and therefore boot()/markBridgeReady()) never having run, isReady() genuinely returns false — the real pre-boot state, not a reimplementation of the check');
+    assert(dom4.window.__brickBridge.getTreeSummary().ok === false, 'getTreeSummary() correctly refuses before ready too, rather than returning something built on a not-yet-trustworthy tree');
   }
 
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));

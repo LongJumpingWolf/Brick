@@ -9,7 +9,73 @@ function openSettings(){
   renderTrashList();
   renderImgbbSection();
   renderBackupList();
+  renderBackupFolderSection();
   showScreen('screenSettings');
+}
+
+/* ---------- Linked Backup Folder ---------- */
+async function renderBackupFolderSection(){
+  if (!BACKUP_FS_SUPPORTED){
+    document.getElementById('backupFolderUnsupported').style.display = '';
+    document.getElementById('backupFolderControls').style.display = 'none';
+    return;
+  }
+  document.getElementById('backupFolderUnsupported').style.display = 'none';
+  document.getElementById('backupFolderControls').style.display = '';
+
+  const handle = await getStoredFolderHandle();
+  const statusEl = document.getElementById('backupFolderStatus');
+  const linkBtn = document.getElementById('linkBackupFolderBtn');
+  const syncBtn = document.getElementById('syncBackupFolderBtn');
+  const reconnectBtn = document.getElementById('reconnectBackupFolderBtn');
+  const unlinkBtn = document.getElementById('unlinkBackupFolderBtn');
+
+  if (!handle){
+    statusEl.textContent = 'No folder linked yet.';
+    linkBtn.style.display = ''; syncBtn.style.display = 'none'; reconnectBtn.style.display = 'none'; unlinkBtn.style.display = 'none';
+    return;
+  }
+  const permission = await checkFolderPermission(handle);
+  const lastSyncRaw = localStorage.getItem('brickBackupFolderLastSync_v1');
+  const lastSyncText = lastSyncRaw ? ('last synced ' + new Date(JSON.parse(lastSyncRaw).syncedAt).toLocaleString()) : 'not synced yet';
+  const folderName = handle.name || 'linked folder';
+
+  if (permission === 'granted'){
+    statusEl.textContent = 'Linked to "' + folderName + '" — ' + lastSyncText + '.';
+    linkBtn.style.display = 'none'; syncBtn.style.display = ''; reconnectBtn.style.display = 'none'; unlinkBtn.style.display = '';
+  } else {
+    statusEl.textContent = 'Linked to "' + folderName + '", but permission needs to be reconfirmed before syncing can continue.';
+    linkBtn.style.display = 'none'; syncBtn.style.display = 'none'; reconnectBtn.style.display = ''; unlinkBtn.style.display = '';
+  }
+}
+function initBackupFolderSettingsUI(){
+  if (!BACKUP_FS_SUPPORTED) return;
+  document.getElementById('linkBackupFolderBtn').addEventListener('click', async ()=>{
+    const handle = await linkBackupFolder();
+    if (!handle){ announce('No folder was linked.'); return; }
+    announce('Linked to "' + (handle.name || 'folder') + '" — syncing now…');
+    await syncBackupFolder(true);
+    renderBackupFolderSection();
+  });
+  document.getElementById('syncBackupFolderBtn').addEventListener('click', async ()=>{
+    announce('Syncing…');
+    const result = await syncBackupFolder(true);
+    announce(result.ok ? 'Backup folder synced.' : 'Sync failed — ' + (result.reason || 'unknown reason') + '.');
+    renderBackupFolderSection();
+  });
+  document.getElementById('reconnectBackupFolderBtn').addEventListener('click', async ()=>{
+    const handle = await getStoredFolderHandle();
+    const ok = await reconnectBackupFolder(handle);
+    announce(ok ? 'Reconnected.' : 'Could not reconnect — try linking the folder again.');
+    if (ok) await syncBackupFolder(true);
+    renderBackupFolderSection();
+  });
+  document.getElementById('unlinkBackupFolderBtn').addEventListener('click', async ()=>{
+    if (!confirm('Unlink this backup folder? Files already written there are left as-is — only the connection is removed.')) return;
+    await unlinkBackupFolder();
+    announce('Backup folder unlinked.');
+    renderBackupFolderSection();
+  });
 }
 
 /* ---------- Data Safety: manual restore from the automatic backup ring ---------- */
@@ -245,4 +311,5 @@ function initSettingsScreen(){
     if (val && !hadKeyBefore) runMandatoryImgbbBackup();
   });
   document.getElementById('retryImgbbBackupBtn').addEventListener('click', runMandatoryImgbbBackup);
+  initBackupFolderSettingsUI();
 }
