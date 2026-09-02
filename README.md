@@ -10,6 +10,10 @@ actual brick-pattern texture and Bricks (decks) get a visible physical
 border — a Wall is meant to look like it's built from many bricks, a
 Brick like one distinct object, so which is which is obvious without
 reading the label. The page itself disables pinch/double-tap zoom.
+Each tile's kebab (⋮) menu button gets a backing chip tinted the right
+direction for its own tile — light-tinted on dark Brick tiles, dark-
+tinted on light Wall tiles — checked with actual WCAG contrast math,
+not eyeballed (5.2:1 and 10.2:1 respectively for the dots themselves).
 
 - **Image Occlusion** — modeled on Anki's actual editor: Select /
   Rectangle / Ellipse tools, drag to draw, drag a shape's body to move
@@ -147,8 +151,14 @@ backed up" right next to a contradictory "0 / 1"), and re-checks for
 any uncaught JS error across the ENTIRE run at the very end — not just
 early on, which is exactly the gap that let a genuinely missing
 variable declaration (`activePointers`/`twoFingerScrollRef` were only
-ever assigned, never declared with `let`) go unnoticed for a while.
-316 assertions, all
+ever assigned, never declared with `let`) go unnoticed for a while,
+confirms the occlusion spotlight window renders on both the question
+and answer screens (sized correctly around the active mask, exactly
+one instance, gone entirely on non-occlusion cards), confirms it's
+using the sharp box-shadow-window technique at the chosen strength
+rather than the earlier soft radial-gradient, and confirms both a
+Wall and a Brick tile's kebab button exist to check contrast against.
+331 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -179,6 +189,21 @@ uses. Say the word and I'll build that as its own piece of work.
 
 ## Study session behavior
 
+- **A sharp spotlight follows the focused mask, on both the question
+  and answer screens.** Everything except the mask a card is actually
+  testing dims behind a hard-edged box-shadow window (not a
+  radial-gradient — that read as a vague, brushed blend when
+  prototyped; a real box-shadow spotlight gives a clean, immediate
+  cutout instead). It's present from the moment a question appears
+  (while the box is still hachure-filled) through to the answer, not
+  something that only switches on after tapping reveal. On top of
+  that: non-focused revealed masks mute to a flat grey pill and pick
+  up a light blur (real depth-of-field, not just lower opacity); the
+  focused label pops in with a small overshoot-bounce and a slow
+  looping glow keeps it prominent rather than going flat right after
+  reveal. Before this, every revealed label got the exact same
+  amber-dark pill regardless of whether it was the one being tested —
+  nothing pulled the eye to the actual focus.
 - **Again/Good buttons are fixed to the viewport.** No more scrolling
   down to reach them past a tall occlusion image or long card text —
   they float above the content, accounting for notched-phone safe

@@ -129,6 +129,18 @@ body:not(.on-wall-screen) .logo-switcher-btn:hover{background:none;}
 .tile-kebab{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s,background .15s;color:inherit;background:rgba(0,0,0,.06);border:none;}
 .tile:hover .tile-kebab, .tile:focus-visible .tile-kebab{opacity:1;}
 .tile-kebab:hover{opacity:1 !important;background:rgba(0,0,0,.16);}
+/* The dots themselves have solid contrast on every tile background
+   (checked: 5.2:1 on a Brick tile, 10.2:1 on a Wall tile, 4.9:1 on a
+   Brick tile in Cement Mode — all comfortably clear of the 3:1 icon
+   threshold). But the button's own backing chip is a BLACK-tinted
+   overlay, which darkens a light Wall tile into a visible "this is a
+   button" affordance — and does almost nothing on an already-dark
+   Brick tile, where darkening further is barely perceptible. A
+   light-tinted chip instead actually shows up against the dark
+   background, giving Brick tiles the same visible affordance Wall
+   tiles already had. */
+.tile.brick-tile .tile-kebab{background:rgba(255,255,255,.16);}
+.tile.brick-tile .tile-kebab:hover{background:rgba(255,255,255,.3) !important;}
 @media (pointer:coarse){
   .tile-kebab{opacity:.75;width:28px;height:28px;}
 }

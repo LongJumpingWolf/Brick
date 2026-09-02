@@ -36,33 +36,82 @@
 .study-stage.text-mode{background:var(--paper);}
 .study-text-card{padding:34px 26px;min-height:200px;display:flex;align-items:center;justify-content:center;text-align:center;}
 .study-text-inner{font-family:'Fraunces',serif;font-size:19px;line-height:1.55;color:var(--ink);}
-.study-mask{position:absolute;}
+.study-mask{position:absolute;transition:background .25s ease, box-shadow .25s ease, border-color .25s ease, opacity .3s ease, filter .3s ease, backdrop-filter .3s ease;}
 .study-mask.shape-ellipse{ border-radius:50%; }
 .study-mask.hidden-box{
   background:repeating-linear-gradient(135deg, var(--clay) 0 10px, var(--clay-dark) 10px 20px);
   box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.3);
+  opacity:.55; filter:saturate(.4);
+  backdrop-filter:blur(1.4px); -webkit-backdrop-filter:blur(1.4px);
 }
 /* the shape THIS card is actually testing gets its own color even while
    hidden — without this, "Hide All" mode gives no clue which of several
-   identical-looking boxes you're meant to focus on */
+   identical-looking boxes you're meant to focus on. Full opacity/no
+   blur/no desaturation (unlike every other box) plus a slow pulsing
+   glow keeps it the obvious center of attention on the question screen
+   itself, not just after revealing. */
 .study-mask.hidden-box.active-mask{
   background:repeating-linear-gradient(135deg, var(--amber) 0 10px, var(--amber-dark) 10px 20px);
   box-shadow:inset 0 0 0 2px var(--amber-dark);
+  opacity:1; filter:none; backdrop-filter:none; -webkit-backdrop-filter:none;
+  z-index:2; animation:studyActiveGlow 2.4s ease-in-out infinite;
 }
-.study-mask.revealed-box{ background:rgba(255,255,255,.06); border:1.5px dashed rgba(216,154,62,.7); }
-.study-mask.revealed-box.active-mask{ border-style:solid; border-color:var(--amber); box-shadow:0 0 0 2px rgba(216,154,62,.3); }
+.study-mask.revealed-box{
+  background:rgba(255,255,255,.03); border:1px dashed rgba(122,110,95,.3);
+  opacity:.45; filter:saturate(.35);
+  backdrop-filter:blur(1.4px); -webkit-backdrop-filter:blur(1.4px);
+}
+.study-mask.revealed-box.active-mask{
+  border-style:solid; border-color:var(--amber);
+  opacity:1; filter:none; backdrop-filter:none; -webkit-backdrop-filter:none;
+  z-index:2; animation:studyActiveGlowRevealed 2.4s ease-in-out infinite;
+}
+@keyframes studyActiveGlow{
+  0%, 100% { box-shadow:inset 0 0 0 2px var(--amber-dark), 0 0 0 3px rgba(216,154,62,.25); }
+  50%      { box-shadow:inset 0 0 0 2px var(--amber-dark), 0 0 0 6px rgba(216,154,62,.12); }
+}
+@keyframes studyActiveGlowRevealed{
+  0%, 100% { box-shadow:0 0 0 4px rgba(216,154,62,.28), 0 6px 16px rgba(169,111,34,.35); }
+  50%      { box-shadow:0 0 0 8px rgba(216,154,62,.16), 0 8px 22px rgba(169,111,34,.45); }
+}
+
+/* A sharp-edged spotlight around the active mask, present on the
+   QUESTION screen too — not only after reveal — so the eye is drawn to
+   the right region even before tapping. Deliberately a hard box-shadow
+   window, not a radial-gradient: a soft blend read as vague/brushed
+   when this was actually prototyped, this reads as a clean cutout. */
+.study-mask-spotlight{
+  position:absolute; pointer-events:none; z-index:1;
+  border-radius:4px;
+  box-shadow:0 0 0 9999px rgba(20,17,14,.26);
+}
 
 /* Label lives OUTSIDE the box, as an attached tab — not centered on
    top of it. A label sitting inside the border covers exactly the
    content it's meant to be labeling, which defeats the point of
-   revealing the region at all. */
+   revealing the region at all. Only the active mask's label gets the
+   amber treatment + a pop-in on reveal; every other revealed label
+   (context from other cards on the same image) mutes to a flat neutral
+   pill instead of competing for the same amber that used to be applied
+   identically everywhere. */
 .study-mask .mlabel{
   position:absolute; left:-1.5px; top:-24px;
-  background:var(--amber-dark); color:#fff;
+  background:rgba(122,110,95,.5); color:#fff; opacity:.6;
   font-family:'IBM Plex Sans',sans-serif; font-size:10.5px; font-weight:700;
   padding:4px 9px; border-radius:5px 5px 5px 0;
   max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  box-shadow:var(--shadow); z-index:2;
+  z-index:2; transition:background .25s ease, opacity .25s ease, box-shadow .25s ease;
+}
+.study-mask.active-mask .mlabel{
+  background:var(--amber-dark); opacity:1; font-weight:700;
+  box-shadow:0 3px 10px rgba(169,111,34,.5);
+  transform:scale(1.08);
+  animation:studyLabelPop .5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes studyLabelPop{
+  0%   { transform:scale(.35); opacity:0; }
+  55%  { transform:scale(1.18); opacity:1; }
+  100% { transform:scale(1.08); opacity:1; }
 }
 /* Near the top edge of the image, an upward tab would get clipped by
    the stage's overflow:hidden — flip it below the box instead. */

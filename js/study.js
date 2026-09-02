@@ -202,6 +202,7 @@ function labelShouldTabBelow(maskY){ return maskY < 12; }
 function paintMasks(c){
   const stage = document.getElementById('studyStage');
   const img = stage.querySelector('img');
+  const activeMask = c.masks.find(m => m.id === c.activeMaskId);
   const overlays = c.masks.map(m=>{
     const isActive = m.id === c.activeMaskId;
     let hidden;
@@ -221,10 +222,26 @@ function paintMasks(c){
     const hintOverlay = showHint ? '<div class="mask-hint-overlay">' + formatInline(m.hint) + '</div>' : '';
     return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + hintOverlay + '</div>';
   }).join('');
-  stage.innerHTML = (img ? img.outerHTML : '') + overlays;
+  const spotlight = activeMask ? renderMaskSpotlight(activeMask) : '';
+  stage.innerHTML = (img ? img.outerHTML : '') + spotlight + overlays;
 
   if (session.revealed && c.backExtra) document.getElementById('studyFooterText').textContent = c.backExtra;
   else document.getElementById('studyFooterText').textContent = '';
+}
+/* A sharp-edged spotlight window around the active mask — present on
+   the question screen too, not only after reveal, so the eye is drawn
+   to the right region even before tapping. Sized a bit larger than
+   the mask itself, with extra room on top to clear the label tab that
+   sits above the box once revealed. A hard box-shadow window rather
+   than a radial-gradient blend — prototyped both, the gradient read as
+   vague/brushed, this reads as a clean, immediate cutout. */
+function renderMaskSpotlight(m){
+  const padX = 2, padTop = 7, padBottom = 2;
+  const left = clamp(m.x - padX, 0, 100);
+  const top = clamp(m.y - padTop, 0, 100);
+  const right = clamp(m.x + m.w + padX, 0, 100);
+  const bottom = clamp(m.y + m.h + padBottom, 0, 100);
+  return '<div class="study-mask-spotlight" style="left:' + left + '%;top:' + top + '%;width:' + (right-left) + '%;height:' + (bottom-top) + '%;"></div>';
 }
 function toggleHints(){
   const c = currentCard();

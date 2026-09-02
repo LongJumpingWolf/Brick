@@ -1420,6 +1420,66 @@ async function main(){
   // throughout this file) could silently accumulate without ever
   // failing the suite. Checking it one final time here, at the very
   // end, closes that gap for good.
+
+  // =========================================================
+  // Occlusion spotlight: sharp-edged window around the active mask,
+  // present on the question screen AND the answer screen
+  // =========================================================
+  runInPage(`openBrickPreview('${seededDeckId}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('currentCard().type') === 'occlusion', 'seeded card under test is an occlusion card');
+  let spotlightEl = doc.querySelector('.study-mask-spotlight');
+  assert(!!spotlightEl, 'a spotlight window renders on the QUESTION screen, before revealing anything — not only after reveal');
+  const activeMaskBounds = evalInPage(`(() => { const c = currentCard(); return c.masks.find(m => m.id === c.activeMaskId); })()`);
+  const spotLeft = parseFloat(spotlightEl.style.left);
+  const spotTop = parseFloat(spotlightEl.style.top);
+  assert(spotLeft <= activeMaskBounds.x, 'spotlight window starts at or before the active mask\'s left edge (has padding, not identical to the box)');
+  assert(spotTop < activeMaskBounds.y, 'spotlight window starts well above the active mask\'s top edge, clearing room for the label tab that appears on reveal');
+  assert(spotLeft + parseFloat(spotlightEl.style.width) >= activeMaskBounds.x + activeMaskBounds.w, 'spotlight window fully contains the active mask horizontally');
+
+  // reveal — spotlight should still be there, unchanged in kind (not removed/re-added as a different element)
+  studyStage.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  spotlightEl = doc.querySelector('.study-mask-spotlight');
+  assert(!!spotlightEl, 'the spotlight window is still present after revealing the answer — the same continuous element, not something that only appears post-reveal');
+  assert(doc.querySelectorAll('.study-mask-spotlight').length === 1, 'exactly one spotlight window exists — not one leftover from the question state plus a new one for the answer state');
+
+  const studyCssFinal = fs.readFileSync(path.join(ROOT, 'css/study.css'), 'utf-8');
+  assert(/\.study-mask-spotlight\{[^}]*box-shadow:0 0 0 9999px rgba\(20,17,14,\.26\)/.test(studyCssFinal), 'spotlight uses the sharp box-shadow-window technique at the medium (26%) strength that was chosen, not the earlier soft radial-gradient or the original 50% strength');
+  assert(!/\.study-mask-spotlight\{[^}]*radial-gradient/.test(studyCssFinal), 'confirms the soft radial-gradient approach was NOT what shipped — the sharp window technique fully replaced it');
+
+  // grade it out and confirm a text-mode (non-occlusion) card correctly gets NO spotlight at all
+  doc.getElementById('gradeGood').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  runInPage(`openBrickPreview('${basicDeck.id}');`);
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('currentCard().type') === 'basic', 'now studying a Basic (text) card');
+  assert(!doc.querySelector('.study-mask-spotlight'), 'no spotlight window on a Basic/Cloze card — the concept only applies to occlusion masks, there is nothing to spotlight otherwise');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // =========================================================
+  // Kebab menu contrast against Wall and Brick tile backgrounds
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  const wallTileForKebab = doc.querySelector('.tile.wall');
+  const brickTileForKebab = doc.querySelector('.tile.brick-tile');
+  assert(!!wallTileForKebab && !!wallTileForKebab.querySelector('.tile-kebab'), 'a Wall tile with a kebab button exists to check contrast against');
+  assert(!!brickTileForKebab && !!brickTileForKebab.querySelector('.tile-kebab'), 'a Brick tile with a kebab button exists to check contrast against');
+  const layoutCssForKebab = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf-8');
+  assert(/\.tile-kebab\{/.test(layoutCssForKebab), 'a base .tile-kebab rule exists to check');
+  assert(/\.tile\.brick-tile \.tile-kebab\{background:rgba\(255,255,255,\.16\)/.test(layoutCssForKebab), 'Brick tiles get a light-tinted kebab backing chip instead of the default dark-tinted one — darkening an already-dark tile barely shows, so the affordance needs to go the other direction there');
+
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');
