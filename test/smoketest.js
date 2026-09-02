@@ -1642,6 +1642,227 @@ async function main(){
   // real, separate bug found while building this) is closed
   assert(doc.getElementById('clozePreviewFront').innerHTML.includes('cloze-blank'), 'the live preview reflects the button-driven edit immediately, not just typing — the preview would otherwise go stale after any toolbar button click');
 
+  // =========================================================
+  // README import format — hand-authored (not app-generated) bundle,
+  // built following ONLY what's documented, verified against the
+  // real import path. If the docs were wrong about a field name or
+  // shape, this is what would actually catch it.
+  // =========================================================
+  const handAuthoredBundle = {
+    version: 1,
+    tree: {
+      type: 'folder',
+      name: 'ignored on import',
+      children: [
+        {
+          type: 'folder',
+          name: 'Hand-Authored Wall',
+          children: [
+            {
+              type: 'deck',
+              name: 'Hand-Authored Brick',
+              createdAt: Date.now(),
+              cards: [
+                {
+                  type: 'occlusion',
+                  // Referencing the already-seeded demo image rather than
+                  // a brand-new hash — storeImageFromDataUrl's new-hash
+                  // path waits on a real Image().onload, which jsdom
+                  // can't fire without the (heavy, native) canvas
+                  // package installed. Real browsers handle a genuinely
+                  // new data: URI here completely normally; this is a
+                  // test-environment constraint, not a documented-format
+                  // concern, and it still exercises the real
+                  // importBundle() end-to-end.
+                  imgHash: 'demo-cell-diagram',
+                  imgW: 600, imgH: 400,
+                  mode: 'hide-all',
+                  activeMaskId: 'mask-1',
+                  header: '', backExtra: '',
+                  masks: [
+                    { id: 'mask-1', shape: 'rect', x: 20, y: 15, w: 18, h: 10, label: 'Nucleus', hint: '' },
+                    { id: 'mask-2', shape: 'ellipse', x: 45, y: 30, w: 12, h: 12, label: 'Nucleolus', hint: '' }
+                  ]
+                },
+                { type: 'basic', front: 'What is the capital of France?', back: 'Paris' },
+                { type: 'cloze', text: 'The [[median]] nerve is compressed in carpal tunnel syndrome.' }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    images: {}
+  };
+  runInPage(`currentFolderId = 'root';`);
+  await sleep(10);
+  runInPage(`(async () => { try { window.__handAuthoredCounts = await importBundle(${JSON.stringify(handAuthoredBundle)}); } catch (err) { window.__handAuthoredError = String(err && err.stack || err); } })();`);
+  await sleep(50);
+  const handAuthoredCounts = evalInPage('window.__handAuthoredCounts');
+  assert(handAuthoredCounts && handAuthoredCounts.bricks === 1 && handAuthoredCounts.cards === 3, 'hand-authored bundle (following ONLY the README\'s documented format, no app-generated content) imports its 1 brick / 3 cards correctly — got ' + JSON.stringify(handAuthoredCounts) + ' error: ' + evalInPage('window.__handAuthoredError'));
+
+  runInPage('renderTree();');
+  await sleep(10);
+  const importedWall = evalInPage(`tree.children.find(c => c.name === 'Hand-Authored Wall')`);
+  assert(!!importedWall, 'the hand-authored Wall actually appears in the live tree — outer tree.name being "ignored on import" was correctly ignored, only children was used');
+  const handAuthoredImportedBrick = importedWall.children.find(c => c.name === 'Hand-Authored Brick');
+  assert(!!handAuthoredImportedBrick && handAuthoredImportedBrick.cards.length === 3, 'the hand-authored Brick and all 3 of its cards (one of each type, exactly as documented) came through');
+  assert(handAuthoredImportedBrick.cards.some(c => c.type === 'occlusion' && c.masks && c.masks.length === 2), 'the occlusion card kept both its masks, with the shared-masks-array-per-card shape the README specifically calls out');
+  assert(handAuthoredImportedBrick.cards.some(c => c.type === 'basic' && c.front === 'What is the capital of France?' && c.back === 'Paris'), 'the basic card came through with the documented front/back fields');
+  assert(handAuthoredImportedBrick.cards.some(c => c.type === 'cloze' && c.text.includes('[[median]]')), 'the cloze card came through with the documented text field, brackets intact');
+  runInPage(`(async () => { window.__handAuthoredImgOk = !!(await getImage('demo-cell-diagram')); })();`);
+  await sleep(30);
+  assert(evalInPage('window.__handAuthoredImgOk') === true, 'the occlusion card\'s referenced image genuinely exists in IndexedDB — confirms the documented imgHash-must-resolve rule actually holds for a real import');
+
+  // =========================================================
+  // WORST-CASE / adversarial import scenarios
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  // --- A. The actual XSS finding: a non-numeric mask coordinate ---
+  // Confirmed by direct reproduction outside this suite that the
+  // UNFIXED code genuinely breaks out of style="left:...%" and
+  // injects a live <img onerror=...> tag. This is the real regression
+  // test for that — feeds the exact payload through the REAL import
+  // path, then studies the card and inspects the actual rendered DOM.
+  const xssPayload = '0%;"><img src=x onerror="window.__xssFired=true">';
+  const xssBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'deck', name:'XSS Test Brick', createdAt: Date.now(), cards:[
+        { type:'occlusion', imgHash:'demo-cell-diagram', imgW:600, imgH:400, mode:'hide-all', activeMaskId:'m1',
+          masks:[ { id:'m1', shape:'rect', x: xssPayload, y: 10, w: 5, h: 5, label:'Evil', hint:'' } ] }
+      ]}
+    ]},
+    images: {}
+  };
+  runInPage(`window.__xssFired = false; (async () => { window.__xssImportCounts = await importBundle(${JSON.stringify(xssBundle)}); })();`);
+  await sleep(50);
+  const xssImportCounts = evalInPage('window.__xssImportCounts');
+  assert(xssImportCounts && xssImportCounts.bricks === 1, 'the XSS-payload bundle still imports successfully (bad data gets neutralized, not rejected outright) — got ' + JSON.stringify(xssImportCounts));
+  runInPage('renderTree();');
+  await sleep(10);
+  const xssDeck = evalInPage(`tree.children.find(c => c.name === 'XSS Test Brick')`);
+  assert(xssDeck.cards[0].masks[0].x === 0, 'the malicious x coordinate was coerced to a safe number (0) in the SAVED card data — not just at render time');
+  doc.querySelector('[data-id="' + xssDeck.id + '"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  startBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(50);
+  assert(evalInPage('window.__xssFired') === false, 'the injected onerror handler never actually fired — no live <img> tag made it into the rendered DOM');
+  assert(!doc.getElementById('studyStage').innerHTML.includes('onerror'), 'the rendered stage HTML contains no trace of the injected attribute at all');
+  const xssMaskEl = doc.querySelector('.study-mask');
+  assert(xssMaskEl.style.left === '0%', 'the mask actually renders at a safe, valid position instead of the malicious string');
+  doc.getElementById('studyBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+
+  // --- B. Malformed JSON (not valid JSON at all) ---
+  runInPage(`
+    (async () => {
+      const file = new window.File(['{ this is not valid json ]'], 'bad.json', { type:'application/json' });
+      await handleImportFile(file);
+      window.__badJsonHandled = true;
+    })();
+  `);
+  await sleep(50);
+  assert(evalInPage('window.__badJsonHandled') === true, 'malformed (unparseable) JSON does not crash the import handler');
+  assert(doc.getElementById('statusLive').textContent.includes('Could not import'), 'a clear error message is shown for invalid JSON — got "' + doc.getElementById('statusLive').textContent + '"');
+
+  // --- C. Valid JSON, wrong shape entirely ---
+  runInPage(`(async () => { try { await importBundle({ hello: 'world' }); window.__wrongShapeThrew = false; } catch (err) { window.__wrongShapeThrew = true; window.__wrongShapeMsg = err.message; } })();`);
+  await sleep(20);
+  assert(evalInPage('window.__wrongShapeThrew') === true, 'a valid-JSON-but-wrong-shape object is rejected with a real error, not silently accepted');
+  assert(evalInPage('window.__wrongShapeMsg').includes('Brick export'), 'the rejection message is actually informative — got "' + evalInPage('window.__wrongShapeMsg') + '"');
+
+  // --- D. Unknown/garbage card type gets dropped, not half-imported ---
+  const garbageTypeBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'deck', name:'Garbage Type Brick', cards:[
+        { type:'basic', front:'Good card', back:'Survives' },
+        { type:'evil-unknown-type', front:'Should be dropped', back:'x' },
+        { type: null, front:'Also dropped' },
+        'not even an object',
+        42,
+        null
+      ]}
+    ]},
+    images: {}
+  };
+  runInPage(`(async () => { window.__garbageCounts = await importBundle(${JSON.stringify(garbageTypeBundle)}); })();`);
+  await sleep(30);
+  runInPage('renderTree();');
+  await sleep(10);
+  const garbageDeck = evalInPage(`tree.children.find(c => c.name === 'Garbage Type Brick')`);
+  assert(garbageDeck.cards.length === 1, 'only the one genuinely valid card survives — 4 pieces of garbage in the same cards array were all dropped cleanly, no crash, got ' + garbageDeck.cards.length);
+  assert(garbageDeck.cards[0].front === 'Good card', 'the surviving card is specifically the valid one, not an arbitrary one');
+
+  // --- E. Occlusion card with no valid masks gets dropped entirely ---
+  const noMasksBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'deck', name:'No Masks Brick', cards:[
+        { type:'occlusion', imgHash:'demo-cell-diagram', masks:[] },
+        { type:'occlusion', imgHash:'demo-cell-diagram' }, // masks missing entirely
+        { type:'basic', front:'Real card', back:'Survives' }
+      ]}
+    ]},
+    images: {}
+  };
+  runInPage(`(async () => { window.__noMasksCounts = await importBundle(${JSON.stringify(noMasksBundle)}); })();`);
+  await sleep(30);
+  runInPage('renderTree();');
+  await sleep(10);
+  const noMasksDeck = evalInPage(`tree.children.find(c => c.name === 'No Masks Brick')`);
+  assert(noMasksDeck.cards.length === 1 && noMasksDeck.cards[0].type === 'basic', 'both maskless occlusion cards were dropped (nothing meaningful to study), only the real basic card survives');
+
+  // --- F. activeMaskId that doesn't match any real mask falls back sensibly ---
+  const badActiveMaskBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'deck', name:'Bad ActiveMask Brick', cards:[
+        { type:'occlusion', imgHash:'demo-cell-diagram', activeMaskId:'this-id-does-not-exist',
+          masks:[ { id:'real-mask', shape:'rect', x:10, y:10, w:5, h:5, label:'Real' } ] }
+      ]}
+    ]},
+    images: {}
+  };
+  runInPage(`(async () => { window.__badAmCounts = await importBundle(${JSON.stringify(badActiveMaskBundle)}); })();`);
+  await sleep(30);
+  runInPage('renderTree();');
+  await sleep(10);
+  const badAmDeck = evalInPage(`tree.children.find(c => c.name === 'Bad ActiveMask Brick')`);
+  assert(badAmDeck.cards[0].activeMaskId === 'real-mask', 'a bogus activeMaskId falls back to the first real mask, so the card is still meaningfully testable rather than referencing nothing');
+
+  // --- G. null/missing name fields get sensible fallbacks, not crashes ---
+  const nullNameBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'folder', name: null, children:[
+        { type:'deck', name: undefined, cards:[ { type:'basic', front:'x', back:'y' } ] }
+      ]}
+    ]},
+    images: {}
+  };
+  runInPage(`(async () => { try { window.__nullNameCounts = await importBundle(${JSON.stringify(nullNameBundle)}); window.__nullNameThrew = false; } catch(err) { window.__nullNameThrew = true; } })();`);
+  await sleep(30);
+  assert(evalInPage('window.__nullNameThrew') === false, 'null/missing name fields do not crash the import');
+  runInPage('renderTree();');
+  await sleep(10);
+  assert(doc.querySelectorAll('.tile-name').length > 0 && Array.from(doc.querySelectorAll('.tile-name')).some(el => el.textContent === 'Imported Wall'), 'a folder with a null name gets a sensible fallback name instead of showing blank');
+
+  // --- H. Extremely long text field doesn't hang or crash ---
+  const hugeText = 'A'.repeat(50000);
+  const hugeBundle = {
+    tree: { type:'folder', name:'x', children:[
+      { type:'deck', name:'Huge Text Brick', cards:[ { type:'basic', front: hugeText, back:'short' } ] }
+    ]},
+    images: {}
+  };
+  const hugeImportStart = Date.now();
+  runInPage(`(async () => { window.__hugeCounts = await importBundle(${JSON.stringify(hugeBundle)}); })();`);
+  await sleep(100);
+  const hugeElapsed = Date.now() - hugeImportStart;
+  assert(evalInPage('window.__hugeCounts') && evalInPage('window.__hugeCounts.cards') === 1, 'a 50,000-character field imports successfully');
+  assert(hugeElapsed < 2000, 'importing a huge text field does not hang — completed in ' + hugeElapsed + 'ms');
+
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');

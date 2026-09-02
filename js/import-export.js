@@ -88,6 +88,70 @@ function validateBundle(obj){
   return obj && typeof obj === 'object' && obj.tree && obj.tree.type === 'folder' && Array.isArray(obj.tree.children) && typeof obj.images === 'object';
 }
 
+/* Sanitizing on the way in — not just assigning fresh ids the way
+   deepCloneWithNewIds does for internal Duplicate — is what actually
+   matters for an import path that has to treat its input as
+   untrusted. A hand-authored or corrupted file can put anything in
+   these fields; without this, a non-numeric mask coordinate reaches
+   a raw style="left:...%" string concatenation in study.js and
+   genuinely breaks out of the attribute (confirmed by direct
+   reproduction: a crafted `x` value produced a real injected
+   <img onerror=...> tag). study.js also now defends itself at the
+   point of use — this is the other half: reject bad data before it
+   ever becomes a saved card at all, rather than relying solely on
+   every future render site remembering to re-guard itself. */
+const VALID_CARD_TYPES = ['occlusion', 'basic', 'cloze'];
+const VALID_MASK_SHAPES = ['rect', 'ellipse'];
+const VALID_OCCLUSION_MODES = ['hide-all', 'hide-one'];
+function sanitizeString(v, fallback){
+  return typeof v === 'string' ? v : (fallback !== undefined ? fallback : '');
+}
+function sanitizeFiniteNumber(v, fallback){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+function sanitizeImportedMask(m){
+  if (!m || typeof m !== 'object') return null;
+  return {
+    id: sanitizeString(m.id) || uid(),
+    shape: VALID_MASK_SHAPES.includes(m.shape) ? m.shape : 'rect',
+    x: safePct(m.x), y: safePct(m.y), w: safePct(m.w), h: safePct(m.h),
+    label: sanitizeString(m.label),
+    hint: sanitizeString(m.hint)
+  };
+}
+function sanitizeImportedCard(c){
+  if (!c || typeof c !== 'object' || !VALID_CARD_TYPES.includes(c.type)) return null; // unrecognized/malformed card type — dropped, not silently half-imported
+  const base = { id: uid(), timeouts: sanitizeFiniteNumber(c.timeouts, 0), tough: !!c.tough, createdAt: Date.now() };
+  if (c.type === 'occlusion'){
+    const masks = Array.isArray(c.masks) ? c.masks.map(sanitizeImportedMask).filter(Boolean) : [];
+    if (!masks.length) return null; // an occlusion card with nothing valid to occlude isn't a meaningfully studyable card
+    const activeMaskId = masks.some(m => m.id === c.activeMaskId) ? c.activeMaskId : masks[0].id;
+    return {
+      ...base, type:'occlusion',
+      imgHash: sanitizeString(c.imgHash),
+      imgW: sanitizeFiniteNumber(c.imgW, 600), imgH: sanitizeFiniteNumber(c.imgH, 400),
+      mode: VALID_OCCLUSION_MODES.includes(c.mode) ? c.mode : 'hide-all',
+      activeMaskId, header: sanitizeString(c.header), backExtra: sanitizeString(c.backExtra),
+      masks
+    };
+  }
+  if (c.type === 'basic') return { ...base, type:'basic', front: sanitizeString(c.front), back: sanitizeString(c.back) };
+  return { ...base, type:'cloze', text: sanitizeString(c.text) }; // cloze
+}
+function sanitizeImportedNode(node){
+  if (!node || typeof node !== 'object') return null;
+  if (node.type === 'deck'){
+    const cards = Array.isArray(node.cards) ? node.cards.map(sanitizeImportedCard).filter(Boolean) : [];
+    return { id: uid(), type:'deck', name: sanitizeString(node.name, 'Imported Brick'), createdAt: Date.now(), cards };
+  }
+  if (node.type === 'folder'){
+    const children = Array.isArray(node.children) ? node.children.map(sanitizeImportedNode).filter(Boolean) : [];
+    return { id: uid(), type:'folder', name: sanitizeString(node.name, 'Imported Wall'), children };
+  }
+  return null; // unrecognized node type at the tree level — dropped
+}
+
 async function importBundle(bundle){
   if (!validateBundle(bundle)) throw new Error('That file doesn\'t look like a Brick export.');
 
@@ -95,13 +159,16 @@ async function importBundle(bundle){
   // card never ends up pointing at a hash that isn't in IndexedDB yet
   const hashEntries = Object.entries(bundle.images || {});
   for (const [hash, img] of hashEntries){
+    if (!img || typeof img.dataUrl !== 'string') continue; // malformed image entry — skip rather than crash the whole import
     await storeImageFromDataUrl(img.dataUrl, img.mimeType, hash);
   }
 
-  // fresh ids for everything imported — reuses the exact same cloning
-  // logic Duplicate already relies on, so imported content can never
-  // collide with (or silently overwrite) anything already in the tree
-  const cloned = bundle.tree.children.map(deepCloneWithNewIds);
+  // sanitize AND assign fresh ids in one pass — every field gets
+  // validated/coerced to a safe type and range, so this replaces the
+  // plain deepCloneWithNewIds() call Duplicate uses internally (that
+  // one only needs fresh ids, since its input is already trusted,
+  // in-app-generated data — import's input is not)
+  const cloned = bundle.tree.children.map(sanitizeImportedNode).filter(Boolean);
   const target = nodeById(currentFolderId) || nodeById('root');
   target.children.push(...cloned);
   saveTreeNow();

@@ -100,6 +100,19 @@ function stagePct(clientX, clientY){
   };
 }
 function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+/* Coerces to a real finite number before clamping — critically, this
+   is what stands between a malformed/malicious mask coordinate (from
+   a hand-authored or corrupted import file) and a broken-out-of-the-
+   attribute HTML injection. A non-numeric string like
+   '0%;"><img src=x onerror=alert(1)' concatenated raw into a
+   style="left:...%" attribute string genuinely closes the quote and
+   injects a live tag — confirmed by direct reproduction while auditing
+   this. Number() coercion turns anything non-numeric into NaN, which
+   Number.isFinite() catches, so it can never reach the template string. */
+function safePct(n){
+  const num = Number(n);
+  return Number.isFinite(num) ? clamp(num, 0, 100) : 0;
+}
 
 /* ---------- rendering ---------- */
 function renderEditorShapes(imgSrc){
@@ -111,13 +124,13 @@ function renderEditorShapes(imgSrc){
   editorShapes.forEach((s, i)=>{
     const isSelected = s.id === selectedShapeId;
     const cls = 'io-shape shape-' + s.shape + (isSelected ? ' selected' : '');
-    html += '<div class="' + cls + '" data-id="' + s.id + '" style="left:' + s.x + '%;top:' + s.y + '%;width:' + s.w + '%;height:' + s.h + '%;">' +
+    html += '<div class="' + cls + '" data-id="' + s.id + '" style="left:' + safePct(s.x) + '%;top:' + safePct(s.y) + '%;width:' + safePct(s.w) + '%;height:' + safePct(s.h) + '%;">' +
       '<span class="io-shape-num">' + (i+1) + '</span></div>';
   });
 
   if (drawingPreview){
     const cls = 'io-shape shape-' + editorTool + ' drawing';
-    html += '<div class="' + cls + '" style="left:' + drawingPreview.x + '%;top:' + drawingPreview.y + '%;width:' + drawingPreview.w + '%;height:' + drawingPreview.h + '%;"></div>';
+    html += '<div class="' + cls + '" style="left:' + safePct(drawingPreview.x) + '%;top:' + safePct(drawingPreview.y) + '%;width:' + safePct(drawingPreview.w) + '%;height:' + safePct(drawingPreview.h) + '%;"></div>';
   }
 
   stage.innerHTML = html;

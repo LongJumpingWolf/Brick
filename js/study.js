@@ -220,7 +220,7 @@ function paintMasks(c){
     // box, so this restriction falls out naturally there too.
     const showHint = hidden && isActive && session.hintsEnabled && m.hint;
     const hintOverlay = showHint ? '<div class="mask-hint-overlay">' + formatInline(m.hint) + '</div>' : '';
-    return '<div class="' + cls + '" style="left:' + m.x + '%;top:' + m.y + '%;width:' + m.w + '%;height:' + m.h + '%;">' + label + hintOverlay + '</div>';
+    return '<div class="' + cls + '" style="left:' + safePct(m.x) + '%;top:' + safePct(m.y) + '%;width:' + safePct(m.w) + '%;height:' + safePct(m.h) + '%;">' + label + hintOverlay + '</div>';
   }).join('');
   const spotlight = activeMask ? renderMaskSpotlight(activeMask) : '';
   stage.innerHTML = (img ? img.outerHTML : '') + spotlight + overlays;
@@ -237,10 +237,11 @@ function paintMasks(c){
    vague/brushed, this reads as a clean, immediate cutout. */
 function renderMaskSpotlight(m){
   const padX = 2, padTop = 7, padBottom = 2;
-  const left = clamp(m.x - padX, 0, 100);
-  const top = clamp(m.y - padTop, 0, 100);
-  const right = clamp(m.x + m.w + padX, 0, 100);
-  const bottom = clamp(m.y + m.h + padBottom, 0, 100);
+  const mx = safePct(m.x), my = safePct(m.y), mw = safePct(m.w), mh = safePct(m.h);
+  const left = clamp(mx - padX, 0, 100);
+  const top = clamp(my - padTop, 0, 100);
+  const right = clamp(mx + mw + padX, 0, 100);
+  const bottom = clamp(my + mh + padBottom, 0, 100);
   return '<div class="study-mask-spotlight" style="left:' + left + '%;top:' + top + '%;width:' + (right-left) + '%;height:' + (bottom-top) + '%;"></div>';
 }
 function toggleHints(){

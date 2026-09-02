@@ -169,7 +169,22 @@ the other, deleting a staged card removes the correct one by index
 (not just any one), and the new Cloze `[[ ]]` button both inserts an
 empty pair with the cursor between them and wraps a real selection
 correctly.
-367 assertions, all
+correctly, and hand-authors a bundle following ONLY the documentation
+in "Import file format" below (not app-generated) to confirm that
+format is actually accurate against the real import code, not just
+described from memory.
+correctly, and hand-authors a bundle following ONLY the documentation
+in "Import file format" below (not app-generated) to confirm that
+format is actually accurate against the real import code, not just
+described from memory — plus a real adversarial battery: feeds the
+actual reproduced XSS payload through the real import path and
+confirms it's neutralized in the saved data itself (not just at
+render time) and never fires in the rendered DOM, malformed JSON,
+valid-JSON-wrong-shape, unknown card types mixed in with real ones,
+occlusion cards with no valid masks, a bogus `activeMaskId`, null
+names, and a 50,000-character field, confirming each is handled
+gracefully rather than crashing or corrupting the tree.
+391 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -338,11 +353,162 @@ Gear icon in the top bar.
   currently have open, with every node and card given a **fresh id** —
   re-importing the same file twice, or importing into the same account
   it came from, can never collide with or silently overwrite anything.
+  See "Import file format" below if you want to hand-author files
+  externally rather than only ever round-tripping Brick's own exports.
 - **Recycle Bin.** Deleting a Wall or Brick (kebab menu or the Delete
   hotkey) no longer destroys it outright — it moves to the bin, full
   contents intact, listed with Restore and Delete Forever per item,
   plus an Empty Recycle Bin button. Restore puts it back where it came
   from, or at the top level if that Wall no longer exists.
+
+## Import file format
+
+The whole bundle is one JSON object with two top-level keys —
+`version` and `exportedAt` are read on export but not actually checked
+on import, so they're optional if you're hand-authoring a file
+(`validateBundle()` only requires `tree` and `images` to be present
+and shaped correctly). Everything below is taken directly from the
+real implementation (`js/import-export.js`), not paraphrased.
+
+**Every field is now validated and sanitized on the way in — this
+wasn't always true.** An audit found a real, working HTML-injection
+bug: a mask's `x`/`y`/`w`/`h` coordinates were concatenated raw into a
+`style="left:...%"` attribute string with no type-checking. A
+non-numeric value like `0%;"><img src=x onerror="...">` genuinely
+broke out of the attribute and executed — confirmed by direct
+reproduction, not theoretical. Fixed two ways: `study.js` now coerces
+every coordinate through a `safePct()` helper before it ever reaches a
+template string (defense at the point of use), and `importBundle()`
+now runs every incoming node through a real sanitizer — bad numbers
+coerce to safe values, unrecognized card `type`s get dropped instead
+of silently corrupting a card, occlusion cards with no valid masks get
+dropped entirely, a bogus `activeMaskId` falls back to the first real
+mask, missing/`null` names get sensible fallbacks — before anything
+reaches the saved tree, not just at render time. So: hand-authoring a
+file that doesn't perfectly match the shapes below won't corrupt your
+library or execute anything; it'll just get cleaned up or dropped.
+
+```json
+{
+  "version": 1,
+  "exportedAt": 1735689600000,
+  "tree": {
+    "type": "folder",
+    "name": "Brick Export",
+    "children": [ /* Wall and/or Brick nodes, see shapes below */ ]
+  },
+  "images": {
+    "<hash>": {
+      "dataUrl": "data:image/png;base64,....",
+      "mimeType": "image/png",
+      "w": 600,
+      "h": 400
+    }
+  }
+}
+```
+
+**Rules that actually matter:**
+- The **outer** `tree` object itself must have `"type": "folder"` — this
+  is what `validateBundle()` checks. Its own `name`/`id` are ignored on
+  import (only `children` gets used); call it whatever you want.
+- Every node under `children` needs a **fresh, unique `id` string** —
+  Brick's own IDs look like `id_xxxxxxxxxxxxxxxx`, but any unique
+  string works; import doesn't validate the format, only that fields
+  exist where expected. **Don't reuse an id from your existing tree** —
+  import doesn't currently deduplicate incoming ids against what's
+  already there the way Duplicate does for its own internal clones.
+- Every image a Brick card references via `imgHash` **must have a
+  matching entry in `images`** — import stores every image in `images`
+  into IndexedDB *before* touching the tree, specifically so a card
+  can never end up pointing at a hash that doesn't exist yet. An
+  occlusion card with an `imgHash` that isn't in `images` will import
+  without crashing, but the study screen will show a broken/empty
+  image for it.
+- `dataUrl` must be a real `data:` URI (`data:<mimeType>;base64,...`).
+  SVG works fine (`data:image/svg+xml;base64,...`), same as the
+  built-in demo image.
+
+**Wall (folder) node:**
+```json
+{ "type": "folder", "name": "My Wall", "children": [ /* nested Wall/Brick nodes */ ] }
+```
+
+**Brick (deck) node:**
+```json
+{
+  "type": "deck",
+  "name": "My Brick",
+  "createdAt": 1735689600000,
+  "cards": [ /* card objects, see the three shapes below — can mix types freely in one deck */ ]
+}
+```
+`createdAt` is a plain epoch-ms number; not read for anything besides
+display, so it's safe to omit or leave stale.
+
+**Occlusion card:**
+```json
+{
+  "type": "occlusion",
+  "imgHash": "a-hash-key-matching-one-in-images",
+  "imgW": 600,
+  "imgH": 400,
+  "mode": "hide-all",
+  "activeMaskId": "mask-1",
+  "header": "",
+  "backExtra": "",
+  "timeouts": 0,
+  "tough": false,
+  "masks": [
+    { "id": "mask-1", "shape": "rect", "x": 20, "y": 15, "w": 18, "h": 10, "label": "Nucleus", "hint": "" },
+    { "id": "mask-2", "shape": "ellipse", "x": 45, "y": 30, "w": 12, "h": 12, "label": "Nucleolus", "hint": "" }
+  ]
+}
+```
+- `mode` is `"hide-all"` (every mask hidden until reveal, this card
+  tests `activeMaskId` specifically) or `"hide-one"` (only
+  `activeMaskId` is ever hidden, the rest already show their labels).
+- **All the Brick's masks live once on `masks`, shared across every
+  card generated from that image** — a real image with 5 labeled
+  regions typically produces 5 occlusion cards, each with the *same*
+  `masks` array but a *different* `activeMaskId` picking out which one
+  that particular card tests. Duplicating the full `masks` array per
+  card (rather than trying to dedupe it) is what the real export
+  format does, so match that if hand-authoring.
+- `activeMaskId` must match the `id` of one of the entries in `masks`
+  for the card to make sense — it isn't validated on import, but a
+  study session for a card whose `activeMaskId` doesn't resolve to a
+  real mask won't have anything sensible to highlight or test.
+- `shape` is `"rect"` or `"ellipse"`. `x`/`y`/`w`/`h` are all
+  **percentages of the image (0–100), not pixels** — `x`/`y` is the
+  top-left corner, `w`/`h` the size.
+- `hint` is optional, shown on request while a mask is still hidden;
+  leave it `""` if you don't want one.
+
+**Basic card:**
+```json
+{ "type": "basic", "front": "What is the capital of France?", "back": "Paris", "timeouts": 0, "tough": false }
+```
+`front`/`back` support the same inline markdown-ish formatting the
+editor's B/I/U/H buttons produce: `**bold**`, `*italic*`, `__underline__`,
+`==highlight==`.
+
+**Cloze card:**
+```json
+{ "type": "cloze", "text": "The [[median]] nerve is compressed in carpal tunnel syndrome.", "timeouts": 0, "tough": false }
+```
+Exactly one field, `text`, with the hidden term wrapped in
+`[[double brackets]]` — same syntax the editor's own `[[ ]]` button
+produces. Only ever wrap one term per card; the parser blanks whatever
+sits inside the first bracket pair it finds.
+
+**Fields every card type shares**, all optional on import (default to
+sensible values if omitted): `id` (gets replaced with a fresh one
+regardless, per the note above), `timeouts` (integer, defaults
+effectively to 0), `tough` (boolean, defaults to false). None of these
+affect anything on first import — they only matter after actual study
+sessions start writing to the separate review log.
+
 - **Image Hosting (ImgBB).** Off by default — see the Database section
   above for what turning it on actually means and the tradeoff involved.
   Adding a key for the first time triggers a **mandatory batch backup**
