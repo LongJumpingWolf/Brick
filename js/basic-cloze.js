@@ -152,7 +152,14 @@ function initBasicClozeEditor(){
     btn.addEventListener('click', ()=> wrapSelection(lastFocusedEditorField, btn.dataset.w));
   });
   document.querySelectorAll('#clozePane .fmt-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=> wrapSelection('clozeInput', btn.dataset.w));
+    btn.addEventListener('click', ()=>{
+      if (btn.dataset.open !== undefined) wrapSelectionPair('clozeInput', btn.dataset.open, btn.dataset.close);
+      else wrapSelection('clozeInput', btn.dataset.w);
+      // wrapSelection/wrapSelectionPair set .value directly, which does
+      // NOT fire a native 'input' event — without this, the live
+      // preview goes stale after using any of these buttons.
+      updateClozePreview();
+    });
   });
   document.getElementById('generateCardsBtn').addEventListener('click', createBrickFromAllStaged);
 }

@@ -158,7 +158,18 @@ one instance, gone entirely on non-occlusion cards), confirms it's
 using the sharp box-shadow-window technique at the chosen strength
 rather than the earlier soft radial-gradient, and confirms both a
 Wall and a Brick tile's kebab button exist to check contrast against.
-331 assertions, all
+confirms both a Wall and a Brick tile's kebab button exist to check
+contrast against, and — after a direct challenge on whether Rename,
+Move, Duplicate, and deleting a staged card actually had real
+coverage (they didn't) — confirms Rename actually persists, Move
+correctly excludes the item's current parent from the destination
+list and updates the real tree (not just the view), Duplicate gives
+every card a genuinely fresh id so editing one copy can never affect
+the other, deleting a staged card removes the correct one by index
+(not just any one), and the new Cloze `[[ ]]` button both inserts an
+empty pair with the cursor between them and wraps a real selection
+correctly.
+367 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -280,6 +291,16 @@ uses. Say the word and I'll build that as its own piece of work.
 
 ## Editor behavior
 
+- **Cloze `[[ ]]` toolbar button.** No selection: inserts an empty
+  `[[]]` pair with the cursor sitting between them, ready to type. A
+  real text selection: wraps exactly that text in brackets and keeps
+  it selected — same behavior the existing B/I/U/H buttons already
+  have, just with an asymmetric open/close pair instead of a single
+  shared marker. Fixed a real bug found while building this: none of
+  the Cloze pane's toolbar buttons refreshed the live preview after
+  use — `wrapSelection`/`wrapSelectionPair` set `.value` directly,
+  which doesn't fire a native `input` event, so the preview quietly
+  went stale after every click. Now explicit.
 - **Hint field auto-focuses after drawing.** Finish dragging out a
   rectangle or ellipse and the cursor jumps straight into that shape's
   hint field in the list below — a PowerPoint-style "just placed a text

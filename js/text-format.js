@@ -54,3 +54,23 @@ function wrapSelection(textareaId, marker){
   el.selectionStart = s + marker.length;
   el.selectionEnd = e + marker.length;
 }
+/* Same idea as wrapSelection, but for an asymmetric pair like [[ ]]
+   (cloze syntax) where the open and close markers differ — a single
+   shared `marker` string can't express that. No selection: inserts
+   both markers with the cursor sitting between them, ready to type.
+   A selection exists: wraps exactly that text and keeps it selected,
+   same behavior wrapSelection already has for B/I/U/H. */
+function wrapSelectionPair(textareaId, openMarker, closeMarker){
+  const el = document.getElementById(textareaId);
+  if (!el) return;
+  const s = el.selectionStart, e = el.selectionEnd;
+  const val = el.value;
+  el.value = val.slice(0, s) + openMarker + val.slice(s, e) + closeMarker + val.slice(e);
+  el.focus();
+  if (s === e){
+    el.selectionStart = el.selectionEnd = s + openMarker.length;
+  } else {
+    el.selectionStart = s + openMarker.length;
+    el.selectionEnd = e + openMarker.length;
+  }
+}

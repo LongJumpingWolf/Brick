@@ -1480,6 +1480,168 @@ async function main(){
   assert(/\.tile-kebab\{/.test(layoutCssForKebab), 'a base .tile-kebab rule exists to check');
   assert(/\.tile\.brick-tile \.tile-kebab\{background:rgba\(255,255,255,\.16\)/.test(layoutCssForKebab), 'Brick tiles get a light-tinted kebab backing chip instead of the default dark-tinted one — darkening an already-dark tile barely shows, so the affordance needs to go the other direction there');
 
+  // =========================================================
+  // Rename — real gap, zero prior coverage
+  // =========================================================
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Rename Test Wall';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const renameTestNode = evalInPage(`tree.children.find(c => c.name === 'Rename Test Wall')`);
+  assert(!!renameTestNode, 'throwaway wall created for the rename test');
+  doc.querySelector('[data-id="' + renameTestNode.id + '"] .tile-kebab').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('menuRename').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('renameOverlay').classList.contains('active'), 'Rename opens the rename overlay');
+  assert(doc.getElementById('renameInput').value === 'Rename Test Wall', 'rename field pre-fills with the current name');
+  doc.getElementById('renameInput').value = 'Renamed Wall XYZ';
+  doc.getElementById('confirmRenameBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.getElementById('renameOverlay').classList.contains('active'), 'confirming rename closes the overlay');
+  assert(evalInPage(`nodeById('${renameTestNode.id}').name`) === 'Renamed Wall XYZ', 'the node\'s actual name updated in the live tree');
+  const tileAfterRename = doc.querySelector('[data-id="' + renameTestNode.id + '"]');
+  assert(tileAfterRename.querySelector('.tile-name').textContent === 'Renamed Wall XYZ', 'the tile itself re-renders with the new name');
+  const savedTreeAfterRename = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  const findRenamed = (n) => n.id === renameTestNode.id ? n : (n.children||[]).map(findRenamed).find(Boolean);
+  assert(findRenamed(savedTreeAfterRename).name === 'Renamed Wall XYZ', 'the rename is actually persisted to localStorage, not just held in memory');
+
+  // =========================================================
+  // Move — real gap, zero prior coverage
+  // =========================================================
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Move Destination Wall';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const moveDestWall = evalInPage(`tree.children.find(c => c.name === 'Move Destination Wall')`);
+  assert(!!moveDestWall, 'destination wall created for the move test');
+
+  const moveSourceBrickId = basicDeck.id; // reuse the existing, known Basic deck as the thing being moved
+  const moveSourceParentId = evalInPage(`parentOf('${moveSourceBrickId}').id`); // wherever it actually lives, not assumed to be root
+  runInPage(`currentFolderId = '${moveSourceParentId}';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  const moveSourceTile = doc.querySelector('[data-id="' + moveSourceBrickId + '"]');
+  assert(!!moveSourceTile, 'the brick being moved is visible at its actual current level before the move');
+  moveSourceTile.querySelector('.tile-kebab').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('menuMove').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('moveOverlay').classList.contains('active'), 'Move opens the move picker overlay');
+  assert(doc.getElementById('moveTargetName').textContent === basicDeck.name, 'picker header names the correct item being moved');
+  const moveOptions = Array.from(doc.querySelectorAll('.move-option'));
+  assert(moveOptions.some(o => o.dataset.wallId === moveDestWall.id), 'the destination wall appears as a real option in the picker');
+  assert(!moveOptions.some(o => o.dataset.wallId === moveSourceParentId), 'the item\'s CURRENT parent does not appear as an option — moving into the same place it already is makes no sense');
+
+  const destOption = moveOptions.find(o => o.dataset.wallId === moveDestWall.id);
+  destOption.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.getElementById('moveOverlay').classList.contains('active'), 'selecting a destination closes the picker');
+  // scoped to #tileGrid specifically — a bare document-wide query also
+  // matches the export picker's own (unrelated, correctly inert)
+  // data-id checkboxes left over in the DOM from an earlier test
+  assert(!doc.querySelector('#tileGrid [data-id="' + moveSourceBrickId + '"]'), 'the moved brick no longer appears at its old location');
+  assert(evalInPage(`parentOf('${moveSourceBrickId}').id`) === moveDestWall.id, 'the brick\'s actual parent in the tree is now the destination wall');
+  runInPage(`currentFolderId = '${moveDestWall.id}';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  assert(!!doc.querySelector('[data-id="' + moveSourceBrickId + '"]'), 'navigating into the destination wall shows the moved brick there');
+  const savedTreeAfterMove = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  const findDestWall = (n) => n.id === moveDestWall.id ? n : (n.children||[]).map(findDestWall).find(Boolean);
+  assert(findDestWall(savedTreeAfterMove).children.some(c => c.id === moveSourceBrickId), 'the move is actually persisted to localStorage — the brick is a real child of the destination wall on disk, not just visually');
+  runInPage(`currentFolderId = 'root';`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  // =========================================================
+  // Duplicate — real gap, zero prior coverage
+  // =========================================================
+  const originalDeckForDup = evalInPage(`nodeById('${seededDeckId}')`);
+  const originalCardCount = originalDeckForDup.cards.length;
+  const originalCardIds = originalDeckForDup.cards.map(c => c.id);
+  runInPage(`currentFolderId = '${demoWallNode.id}';`);
+  runInPage('renderTree();');
+  await sleep(10);
+  doc.querySelector('[data-id="' + seededDeckId + '"] .tile-kebab').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('menuDuplicate').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  const duplicatedNode = evalInPage(`nodeById(currentFolderId).children.find(c => c.name === '${originalDeckForDup.name} (copy)')`);
+  assert(!!duplicatedNode, 'a duplicate tile was created with the expected "(copy)" suffix');
+  assert(duplicatedNode.id !== seededDeckId, 'the duplicate has a fresh id, not the same one as the original');
+  assert(duplicatedNode.cards.length === originalCardCount, 'the duplicate carries the same number of cards');
+  const dupCardIds = duplicatedNode.cards.map(c => c.id);
+  assert(dupCardIds.every(id => !originalCardIds.includes(id)), 'every duplicated card has its own fresh id — none reused from the original, so editing one copy can never silently affect the other');
+  assert(duplicatedNode.cards.every((c,i) => c.imgHash === originalDeckForDup.cards[i].imgHash), 'duplicated cards still correctly reference the same underlying image');
+  const originalStillIntact = evalInPage(`nodeById('${seededDeckId}')`);
+  assert(originalStillIntact.cards.length === originalCardCount && originalStillIntact.name === originalDeckForDup.name, 'the original deck is completely untouched by duplicating it');
+
+  // =========================================================
+  // Deleting a STAGED card (Basic and Cloze) — real gap, zero prior coverage
+  // =========================================================
+  doc.getElementById('newBrickBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.querySelector('.mode-tab[data-type="basic"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('basicFrontInput').value = 'Card One Front'; doc.getElementById('basicBackInput').value = 'Card One Back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  doc.getElementById('basicFrontInput').value = 'Card Two Front'; doc.getElementById('basicBackInput').value = 'Card Two Back';
+  doc.getElementById('addBasicCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('basicStagedCards.length') === 2, 'two basic cards staged');
+  doc.querySelector('#basicStagedList .del-staged[data-idx="0"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('basicStagedCards.length') === 1, 'deleting one staged basic card leaves exactly one behind');
+  assert(evalInPage('basicStagedCards[0].front') === 'Card Two Front', 'the CORRECT remaining card is "Card Two" — index-based deletion actually removed the first one, not just any one');
+
+  doc.querySelector('.mode-tab[data-type="cloze"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('clozeInput').value = 'The [[first]] cloze card.';
+  doc.getElementById('addClozeCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  doc.getElementById('clozeInput').value = 'The [[second]] cloze card.';
+  doc.getElementById('addClozeCardBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('clozeStagedCards.length') === 2, 'two cloze cards staged');
+  doc.querySelector('#clozeStagedList .del-staged[data-idx="0"]').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('clozeStagedCards.length') === 1, 'deleting one staged cloze card leaves exactly one behind');
+  assert(evalInPage('clozeStagedCards[0].text').includes('second'), 'the CORRECT remaining cloze card is "second" — confirms index-based removal here too');
+
+  // =========================================================
+  // New Cloze [[ ]] button — no selection inserts with cursor between,
+  // a real selection wraps exactly that text
+  // =========================================================
+  const clozeInputEl = doc.getElementById('clozeInput');
+  const clozeBtn = doc.querySelector('#clozePane .fmt-cloze');
+  assert(!!clozeBtn, 'the new Cloze [[ ]] button exists in the toolbar');
+
+  clozeInputEl.value = '';
+  clozeInputEl.focus();
+  clozeInputEl.setSelectionRange(0, 0);
+  clozeBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(clozeInputEl.value === '[[]]', 'clicking with no selection and an empty field inserts an empty [[ ]] pair — got "' + clozeInputEl.value + '"');
+  assert(clozeInputEl.selectionStart === 2 && clozeInputEl.selectionEnd === 2, 'the cursor sits exactly between the two brackets, ready to type — got start=' + clozeInputEl.selectionStart + ' end=' + clozeInputEl.selectionEnd);
+
+  clozeInputEl.value = 'The median nerve is compressed.';
+  const medianStart = clozeInputEl.value.indexOf('median');
+  clozeInputEl.setSelectionRange(medianStart, medianStart + 'median'.length);
+  clozeBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(clozeInputEl.value === 'The [[median]] nerve is compressed.', 'clicking WITH a real text selection wraps exactly that selected text — got "' + clozeInputEl.value + '"');
+  assert(clozeInputEl.value.slice(clozeInputEl.selectionStart, clozeInputEl.selectionEnd) === 'median', 'after wrapping, the original word stays selected (not the brackets) — matches how the B/I/U/H buttons already behave');
+
+  // the live preview actually refreshes after using a toolbar button —
+  // wrapSelection/wrapSelectionPair set .value directly, which does
+  // NOT fire a native 'input' event on its own; confirms that gap (a
+  // real, separate bug found while building this) is closed
+  assert(doc.getElementById('clozePreviewFront').innerHTML.includes('cloze-blank'), 'the live preview reflects the button-driven edit immediately, not just typing — the preview would otherwise go stale after any toolbar button click');
+
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');

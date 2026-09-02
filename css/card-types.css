@@ -15,6 +15,7 @@
 .fmt-btn.fmt-i{font-style:italic;}
 .fmt-btn.fmt-u{text-decoration:underline;}
 .fmt-btn.fmt-h{background:linear-gradient(transparent 55%, #FCEFC7 55%);}
+.fmt-btn.fmt-cloze{width:auto;padding:0 8px;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:11.5px;}
 
 .editor-face-block{}
 
