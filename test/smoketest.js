@@ -1863,6 +1863,178 @@ async function main(){
   assert(evalInPage('window.__hugeCounts') && evalInPage('window.__hugeCounts.cards') === 1, 'a 50,000-character field imports successfully');
   assert(hugeElapsed < 2000, 'importing a huge text field does not hang — completed in ' + hugeElapsed + 'ms');
 
+  // =========================================================
+  // DATA SAFETY — the highest-stakes code in the app, tested the
+  // most rigorously. Three things: the rolling backup ring buffer,
+  // save-failure handling (storage full etc.), and a genuine
+  // second-boot test proving corrupted-data recovery actually works
+  // end-to-end, not just as an isolated function call.
+  // =========================================================
+
+  // --- backup ring buffer: shrink the interval so backups accumulate
+  // fast instead of needing real 5-minute gaps between test steps ---
+  runInPage(`TREE_BACKUP_MIN_INTERVAL_MS = 1;`);
+  runInPage(`localStorage.removeItem('brickTreeBackups_v1');`); // clean slate — earlier tests' saves shouldn't count toward this
+  await sleep(10);
+
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Backup Ring Test 1';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(30);
+  assert(evalInPage('loadTreeBackups().length') === 1, 'the very first save after seeding a tree creates exactly one backup of the prior state — got ' + evalInPage('loadTreeBackups().length'));
+
+  for (let i = 2; i <= 7; i++){
+    doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(5);
+    doc.getElementById('nameModalInput').value = 'Backup Ring Test ' + i;
+    doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+    await sleep(15);
+  }
+  assert(evalInPage('loadTreeBackups().length') === 5, 'the ring buffer caps at MAX_TREE_BACKUPS (5) even after 7 total saves — oldest ones roll off rather than growing forever, got ' + evalInPage('loadTreeBackups().length'));
+  const ringNames = evalInPage(`loadTreeBackups().map(b => b.tree.children[b.tree.children.length-1] ? b.tree.children.map(c=>c.name).slice(-1)[0] : null)`);
+  assert(ringNames[ringNames.length-1].includes('Backup Ring Test 6') || ringNames[ringNames.length-1].includes('Backup Ring Test 7'), 'the retained backups are the MOST RECENT ones, not the oldest — the ring correctly drops from the front, not the back');
+
+  // time-gating: with the interval restored to something real, rapid
+  // saves should NOT each produce a new backup
+  runInPage(`TREE_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;`);
+  const backupCountBeforeRapidSaves = evalInPage('loadTreeBackups().length');
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(5);
+  doc.getElementById('nameModalInput').value = 'Rapid Save A';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(5);
+  doc.getElementById('nameModalInput').value = 'Rapid Save B';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(evalInPage('loadTreeBackups().length') === backupCountBeforeRapidSaves, 'with a real (long) interval restored, two rapid successive saves do NOT each create a new backup — the time-gate actually works, not just accidentally passing when shrunk');
+
+  // --- loadTree() corruption/recovery logic, tested directly ---
+  const validBackupSnapshot = evalInPage('loadTreeBackups()[loadTreeBackups().length-1]');
+  assert(validBackupSnapshot && validBackupSnapshot.tree && validBackupSnapshot.tree.type === 'folder', 'sanity: the backup we are about to test recovery against is itself well-formed');
+  runInPage(`localStorage.setItem('brickTree_v1', '{ this is not valid json');`);
+  const recoveredTree = evalInPage('loadTree()');
+  assert(recoveredTree && recoveredTree.type === 'folder' && Array.isArray(recoveredTree.children), 'loadTree() recovers a genuinely usable tree when the primary data is corrupted JSON');
+  assert(evalInPage('window.__brickRecoveredFromBackup') !== undefined, 'loadTree() flags that a backup-recovery happened, for the boot-time UI to pick up');
+  assert(evalInPage(`localStorage.getItem('brickTreeCorrupted_v1')`).includes('this is not valid json'), 'the original corrupted string is preserved in a separate key rather than being discarded outright');
+
+  // and the true worst case: corrupted primary data AND no valid backup either
+  runInPage(`localStorage.removeItem('brickTreeBackups_v1'); localStorage.setItem('brickTree_v1', '{ still broken'); window.__brickRecoveredFromBackup = undefined; window.__brickDataLossWarning = undefined;`);
+  const lastResortTree = evalInPage('loadTree()');
+  assert(lastResortTree && lastResortTree.type === 'folder', 'even with corrupted primary data AND no backup, loadTree() returns a usable (seed) tree rather than throwing or returning something broken');
+  assert(evalInPage('window.__brickDataLossWarning') === true, 'this genuine worst case is flagged distinctly from the recovered-from-backup case, so the UI can be honest about which happened');
+
+  // =========================================================
+  // Save failure handling: mock localStorage.setItem to simulate
+  // storage being full, confirm the failure is loud, not silent
+  // =========================================================
+  // restore real localStorage/tree state first — the corruption tests
+  // above deliberately broke it
+  runInPage(`localStorage.setItem('brickTree_v1', JSON.stringify(${JSON.stringify({ id:'root', type:'folder', name:'Brick', children:[] })}));`);
+  runInPage(`currentFolderId = 'root'; tree = loadTree();`);
+  runInPage('renderTree();');
+  await sleep(10);
+
+  assert(!doc.getElementById('saveFailedOverlay').classList.contains('active'), 'save-failed modal starts closed');
+  // jsdom's Storage implementation silently ignores direct reassignment
+  // of localStorage.setItem (confirmed directly — it just keeps using
+  // the real one), so simulate the failure at the app's own saveTree()
+  // function instead, which is a plain reassignable function.
+  runInPage(`window.__realSaveTree = saveTree; saveTree = function(t){ return false; };`);
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Should Fail To Save';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(doc.getElementById('saveFailedOverlay').classList.contains('active'), 'a genuinely failed save opens the mandatory warning modal — not a silent console.warn nobody sees');
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('saveFailedOverlay').classList.contains('active'), 'Escape does not dismiss the save-failed warning — same reasoning as the ImgBB modal, this must not be missable');
+
+  doc.getElementById('saveFailedAckBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(!doc.getElementById('saveFailedOverlay').classList.contains('active'), '"I understand" dismisses the modal');
+
+  // a SECOND failure in the same session should not re-spam the modal
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Should Also Fail';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  assert(!doc.getElementById('saveFailedOverlay').classList.contains('active'), 'a second save failure in the same session does not reopen the modal — avoids it becoming unusable if saves keep failing in the background');
+
+  runInPage(`saveTree = window.__realSaveTree;`); // restore real behavior for the rest of the suite
+  await sleep(10);
+
+  // seed at least one fresh backup for the restore-UI test below — the
+  // "no backup available" worst-case test above deliberately cleared
+  // brickTreeBackups_v1, and nothing since has repopulated it
+  doc.getElementById('newWallBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  doc.getElementById('nameModalInput').value = 'Pre-Restore-Test Wall';
+  doc.getElementById('nameModalConfirm').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+
+  // =========================================================
+  // Manual restore-from-backup, in Settings
+  // =========================================================
+  doc.getElementById('settingsBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(10);
+  assert(doc.getElementById('dataSafetyStatus').textContent.includes('backup'), 'Data Safety section shows a status line mentioning backups');
+  const backupRows = doc.querySelectorAll('#backupList .trash-row');
+  assert(backupRows.length > 0, 'at least one backup is listed for manual restore');
+
+  const treeBeforeRestore = evalInPage('JSON.stringify(tree)');
+  const firstBackupRestoreBtn = doc.querySelector('#backupList [data-action="restore-backup"]');
+  firstBackupRestoreBtn.dispatchEvent(new window.Event('click', { bubbles:true }));
+  await sleep(20);
+  const treeAfterRestore = evalInPage('JSON.stringify(tree)');
+  assert(treeAfterRestore !== treeBeforeRestore, 'restoring a backup actually changes the live tree — not a no-op');
+  assert(doc.getElementById('screenWall').classList.contains('active'), 'restoring a backup returns to the Wall screen so the result is immediately visible');
+  const savedAfterRestore = JSON.parse(window.localStorage.getItem('brickTree_v1'));
+  assert(JSON.stringify(savedAfterRestore) === treeAfterRestore, 'the restored tree is actually persisted to localStorage, not just held in memory');
+
+  // =========================================================
+  // Boot-time recovery notice — a GENUINE second boot, fresh JSDOM
+  // instance, corrupted data pre-seeded before any script runs, to
+  // prove the full pipeline works end-to-end and not just the
+  // isolated loadTree() function call tested above
+  // =========================================================
+  {
+    const dom2 = new JSDOM(html, {
+      url: 'http://localhost/index.html', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true,
+      beforeParse(window2){
+        window2.Element.prototype.getBoundingClientRect = function(){ return { left:0, top:0, width:400, height:300, right:400, bottom:300 }; };
+        window2.indexedDB = window2.indexedDB || global.indexedDB;
+        if (!window2.crypto) Object.defineProperty(window2, 'crypto', { value: webcrypto, configurable: true });
+        else if (!window2.crypto.subtle) window2.crypto.subtle = webcrypto.subtle;
+        // seed corrupted primary data + one valid backup, BEFORE any app script runs
+        window2.localStorage.setItem('brickTree_v1', '{ deliberately broken json for the second-boot test');
+        window2.localStorage.setItem('brickTreeBackups_v1', JSON.stringify([
+          { savedAt: Date.now() - 60000, tree: { id:'root', type:'folder', name:'Brick', children:[
+            { id:'recovered-wall', type:'folder', name:'Recovered From Backup', children:[] }
+          ] } }
+        ]));
+      }
+    });
+    const doc2 = dom2.window.document;
+    function runInPage2(code){ const el = doc2.createElement('script'); el.textContent = code; doc2.body.appendChild(el); }
+    scriptOrder.forEach(rel => runInPage2(fs.readFileSync(path.join(ROOT, rel), 'utf-8')));
+    await sleep(300);
+
+    assert(doc2.getElementById('dataRecoveryOverlay').classList.contains('active'), 'a genuine second boot with corrupted primary data shows the Data Recovery notice automatically, unprompted');
+    assert(doc2.getElementById('dataRecoveryText').textContent.includes('restored from a backup'), 'the notice correctly identifies this as a backup-recovery, not the total-loss case — got "' + doc2.getElementById('dataRecoveryText').textContent + '"');
+    dom2.window.KeyboardEvent && doc2.dispatchEvent(new dom2.window.KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
+    await sleep(10);
+    assert(doc2.getElementById('dataRecoveryOverlay').classList.contains('active'), 'Escape does not dismiss the data recovery notice either — this is exactly the thing that must not be missable');
+    assert(!!doc2.querySelector('[data-id="recovered-wall"]'), 'the actual recovered content — the Wall from the backup — is genuinely visible on the Wall screen, not just a notice with nothing behind it');
+    doc2.getElementById('dataRecoveryAckBtn').dispatchEvent(new dom2.window.Event('click', { bubbles:true }));
+    await sleep(10);
+    assert(!doc2.getElementById('dataRecoveryOverlay').classList.contains('active'), '"I understand" dismisses the notice once acknowledged');
+  }
+
   assert(errors.length === 0, 'no uncaught JS errors accumulated across the ENTIRE test run (' + errors.length + '): ' + errors.map(String).join(' | '));
 
   console.log(failures ? ('\n=== ' + failures + ' FAILURE(S) ===') : '\n=== ALL BRICK MULTI-FILE INTEGRATION TESTS PASSED ===');

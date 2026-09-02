@@ -131,6 +131,20 @@
 
     <div class="settings-section">
       <div class="settings-section-head">
+        <h3>Data Safety</h3>
+        <p class="settings-section-sub">
+          Everything lives only in this browser — clearing browsing data, uninstalling the browser, or
+          switching devices loses it permanently. <strong>Export (above) is the only real backup</strong> —
+          it's a real file outside the browser's storage. Everything below is a same-browser safety net
+          for accidents, not a substitute for exporting periodically.
+        </p>
+      </div>
+      <p class="settings-status" id="dataSafetyStatus" style="margin-bottom:12px;"></p>
+      <div class="backup-list" id="backupList"></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-head">
         <h3>Recycle Bin</h3>
         <p class="settings-section-sub">Deleted Walls and Bricks land here first — nothing is destroyed outright until you empty it.</p>
       </div>
@@ -420,6 +434,43 @@
     <div class="overlay-close-row" style="justify-content:space-between;">
       <button type="button" class="brick-btn outline small" id="cancelRenameBtn">Cancel</button>
       <button type="button" class="brick-btn small" id="confirmRenameBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DATA RECOVERY NOTICE ===================== -->
+<!-- Shown at boot only if loadTree() had to step in — either
+     recovered from an automatic backup, or found nothing usable at
+     all. Deliberately not dismissable via Escape/outside-click, same
+     as the ImgBB modal below — this is exactly the kind of thing that
+     must not be missable. -->
+<div class="overlay" id="dataRecoveryOverlay" role="dialog" aria-modal="true" aria-labelledby="dataRecoveryTitle">
+  <div class="overlay-modal">
+    <h3 id="dataRecoveryTitle">⚠ Data recovery</h3>
+    <p class="settings-section-sub" id="dataRecoveryText" style="margin-bottom:16px;"></p>
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small" id="dataRecoveryExportBtn">Export a backup now</button>
+      <button type="button" class="brick-btn small" id="dataRecoveryAckBtn">I understand</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SAVE FAILED WARNING ===================== -->
+<!-- Shown the first time a save fails in a session (storage full,
+     etc.) — also not dismissable via Escape, since silently letting
+     someone keep working on top of a save that isn't landing is
+     exactly the failure mode this whole feature exists to prevent. -->
+<div class="overlay" id="saveFailedOverlay" role="dialog" aria-modal="true" aria-labelledby="saveFailedTitle">
+  <div class="overlay-modal">
+    <h3 id="saveFailedTitle">⚠ Your last change wasn't saved</h3>
+    <p class="settings-section-sub" style="margin-bottom:16px;">
+      Local storage may be full. Nothing has been lost yet, but changes from here on won't persist
+      until there's room again — export a backup right now, then free up space (Settings → Recycle
+      Bin → Empty, or delete something you don't need) and try again.
+    </p>
+    <div class="overlay-close-row" style="justify-content:space-between;">
+      <button type="button" class="brick-btn outline small" id="saveFailedExportBtn">Export a backup now</button>
+      <button type="button" class="brick-btn small" id="saveFailedAckBtn">I understand</button>
     </div>
   </div>
 </div>

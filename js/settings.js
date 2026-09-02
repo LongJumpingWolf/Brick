@@ -8,10 +8,49 @@
 function openSettings(){
   renderTrashList();
   renderImgbbSection();
+  renderBackupList();
   showScreen('screenSettings');
 }
 
-/* ---------- Recycle Bin ---------- */
+/* ---------- Data Safety: manual restore from the automatic backup ring ---------- */
+function renderBackupList(){
+  const statusEl = document.getElementById('dataSafetyStatus');
+  const listEl = document.getElementById('backupList');
+  const backups = loadTreeBackups().slice().reverse(); // newest first
+  if (!backups.length){
+    statusEl.textContent = 'No same-browser backups yet — one gets taken automatically as you use the app.';
+    listEl.innerHTML = '';
+    return;
+  }
+  statusEl.textContent = backups.length + ' automatic backup' + (backups.length===1?'':'s') + ' available in this browser, most recent first.';
+  listEl.innerHTML = backups.map((b, displayIdx)=>{
+    const realIdx = backups.length - 1 - displayIdx; // index into the underlying (oldest-first) stored array
+    const when = new Date(b.savedAt).toLocaleString();
+    const counts = countBundleContents(b.tree);
+    return '<div class="trash-row" data-backup-idx="' + realIdx + '">' +
+      '<div class="trash-info"><div class="trash-name">' + when + '</div>' +
+      '<div class="trash-meta">' + counts.bricks + ' brick' + (counts.bricks===1?'':'s') + ', ' + counts.cards + ' card' + (counts.cards===1?'':'s') + '</div></div>' +
+      '<div class="trash-actions"><button type="button" class="mini-btn" data-action="restore-backup" data-backup-idx="' + realIdx + '">Restore</button></div>' +
+      '</div>';
+  }).join('');
+  listEl.querySelectorAll('[data-action="restore-backup"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = parseInt(btn.dataset.backupIdx, 10);
+      const entry = loadTreeBackups()[idx];
+      if (!entry) return;
+      const when = new Date(entry.savedAt).toLocaleString();
+      if (!confirm('Restore the backup from ' + when + '? Your CURRENT data will be replaced — anything changed since then will be lost unless you export it first.')) return;
+      const restored = restoreTreeFromBackupIndex(idx);
+      if (!restored){ announce('That backup could not be restored.'); return; }
+      tree = restored;
+      currentFolderId = 'root';
+      saveTreeNow();
+      renderTree();
+      showScreen('screenWall');
+      announce('Restored the backup from ' + when + '.');
+    });
+  });
+}/* ---------- Recycle Bin ---------- */
 function timeAgo(ts){
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return 'just now';

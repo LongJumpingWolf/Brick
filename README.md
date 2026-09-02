@@ -184,7 +184,18 @@ valid-JSON-wrong-shape, unknown card types mixed in with real ones,
 occlusion cards with no valid masks, a bogus `activeMaskId`, null
 names, and a 50,000-character field, confirming each is handled
 gracefully rather than crashing or corrupting the tree.
-391 assertions, all
+gracefully rather than crashing or corrupting the tree, and — the
+highest-stakes part of the suite — the rolling backup ring buffer
+(caps at 5, correctly time-gated so rapid saves don't each create
+one), `loadTree()`'s corruption recovery tested directly against both
+the "backup available" and genuine "no backup at all" cases, a
+simulated save failure showing the mandatory warning exactly once per
+session, manual restore-from-backup in Settings actually changing and
+persisting the live tree, and — the most rigorous test in the whole
+file — a genuine second boot in a fresh JSDOM instance with corrupted
+data pre-seeded before any script runs, proving the full recovery
+pipeline works end-to-end rather than just the isolated function.
+416 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -200,6 +211,18 @@ the tile wrapper a `<div role="button">` instead.
 localStorage and IndexedDB by default — no Supabase, no serverless
 function required. You can deploy this to Vercel with zero environment
 variables set and it works fully.
+
+**Deploying a new version of the code never touches anyone's stored
+data.** Vercel (or wherever this is hosted) only serves the HTML/CSS/
+JS files themselves — deploying a new build replaces those files on
+the server, full stop. It has no access to, and no effect on,
+anything already sitting in a person's browser's localStorage or
+IndexedDB. The actual risk in an update isn't the deploy itself, it's
+a **future code change** that assumes a data shape older saved data
+doesn't have — see "Data Safety" below for what happens if that ever
+causes saved data to look unreadable: it's recovered automatically
+from a backup rather than silently discarded, which didn't used to be
+true and was fixed specifically because of that risk.
 
 The one **optional** exception: Settings → Image Hosting lets you add
 an ImgBB API key to back up occlusion images to the cloud as you add
@@ -355,6 +378,43 @@ Gear icon in the top bar.
   it came from, can never collide with or silently overwrite anything.
   See "Import file format" below if you want to hand-author files
   externally rather than only ever round-tripping Brick's own exports.
+- **Data Safety.** Read this section if you care about not losing your
+  library — the short version: **Export is the only real backup**,
+  everything else here is a same-browser safety net for accidents, not
+  a substitute for it.
+  - **Automatic rolling backups.** Every save snapshots the *previous*
+    on-disk state first (time-gated to once per 5 minutes, so it
+    doesn't fire on every keystroke) — up to 5 kept at a time, oldest
+    dropped as new ones come in. Restorable manually from
+    Settings → Data Safety, or used automatically if the primary data
+    turns out to be unreadable.
+  - **Corrupted data is never silently discarded.** Before this
+    existed, if the saved tree was ever unreadable for any reason, the
+    app would silently reset to the demo content with zero warning —
+    a real bug, not hypothetical, found and fixed while building this.
+    Now: on load, if the primary data won't parse or doesn't have the
+    right shape, it automatically recovers from the most recent valid
+    backup and shows an unmissable notice explaining exactly what
+    happened and when the backup was taken (not dismissable via
+    Escape). If there's no usable backup either, it says so plainly
+    instead of pretending nothing went wrong — and the original
+    unreadable data is kept in a separate key rather than being
+    thrown away outright, in case something is still recoverable from
+    it by hand.
+  - **A failed save is loud, not silent.** Also a real, found-and-fixed
+    bug: saves were failing silently on storage-full and similar
+    errors, so someone could keep working for a while genuinely
+    believing everything was saved. Now a failed save opens a
+    mandatory (non-Escape-dismissable) warning immediately, with a
+    direct path to export a backup on the spot. It only interrupts
+    once per session, not on every subsequent failure, so a run of bad
+    luck doesn't turn into an unusable wall of modals.
+  - **What this can't protect against:** the browser's storage being
+    cleared entirely — by the person, by the OS, by uninstalling the
+    browser, by switching devices. No in-browser safety net can help
+    with that; only an exported `.json` file living somewhere else
+    can. Export periodically, especially before anything that touches
+    browser storage broadly (clearing cache, OS updates, etc.).
 - **Recycle Bin.** Deleting a Wall or Brick (kebab menu or the Delete
   hotkey) no longer destroys it outright — it moves to the bin, full
   contents intact, listed with Restore and Delete Forever per item,

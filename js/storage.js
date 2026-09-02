@@ -6,6 +6,8 @@
    ===================================================================== */
 
 const TREE_KEY = 'brickTree_v1';
+const TREE_BACKUP_KEY = 'brickTreeBackups_v1';
+const TREE_CORRUPTED_KEY = 'brickTreeCorrupted_v1'; // last-resort: whatever unparseable data was found, kept around rather than discarded
 const LOG_KEY  = 'brickReviewLog_v1';
 const PENDING_SESSION_KEY = 'brickPendingSession_v1';
 const TRASH_KEY = 'brickTrash_v1';
@@ -168,16 +170,107 @@ function seedTree(){
     ]
   };
 }
+/* =====================================================================
+   DATA SAFETY — the tree is the one thing in this app that actually
+   matters: every Wall, every Brick, every card. Losing it silently is
+   unacceptable, so this section treats every failure mode as
+   something to actively recover from or loudly surface, never quietly
+   swallow.
+
+   Three layers:
+   1. A rolling backup — before writing a new tree, the PREVIOUS valid
+      on-disk state gets snapshotted (time-gated so it doesn't happen
+      on every single keystroke-triggered save, but still frequent
+      enough to matter — up to a few hours of history typically).
+   2. Real structural validation on load, not just "did JSON.parse not
+      throw" — a parsed-but-garbage-shaped object is treated the same
+      as corrupted data.
+   3. If the primary data IS unusable: try the most recent valid
+      backup first. Only fall back to the empty demo seed as an
+      absolute last resort, and either way, flag it so the UI can tell
+      the person plainly what happened rather than pretend nothing did.
+      The original corrupted string is preserved in a separate key
+      rather than discarded, in case there's still something worth
+      digging out of it by hand later.
+   ===================================================================== */
+const MAX_TREE_BACKUPS = 5;
+let TREE_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes between backup snapshots — `let`, not `const`, so tests can shrink this rather than needing to wait 5 real minutes
+
+function isValidTreeShape(t){
+  return !!t && typeof t === 'object' && t.type === 'folder' && Array.isArray(t.children);
+}
+function loadTreeBackups(){
+  try { const raw = localStorage.getItem(TREE_BACKUP_KEY); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; }
+  catch (err){ return []; }
+}
+function mostRecentValidBackup(){
+  const backups = loadTreeBackups();
+  for (let i = backups.length - 1; i >= 0; i--){
+    if (backups[i] && isValidTreeShape(backups[i].tree)) return backups[i];
+  }
+  return null;
+}
+/* For the Settings screen's manual "restore a backup" list — a
+   deliberate rollback the person chooses, distinct from the automatic
+   corruption-recovery loadTree() does on its own. */
+function restoreTreeFromBackupIndex(index){
+  const backups = loadTreeBackups();
+  const entry = backups[index];
+  if (!entry || !isValidTreeShape(entry.tree)) return null;
+  return entry.tree;
+}
+/* Best-effort — a failure here must never be the reason an actual
+   save fails. Skips silently (not even a console.warn) if storage is
+   already tight, since saveTree()'s own failure handling covers that
+   case with something the user actually sees. */
+function maybeBackupCurrentTree(){
+  try {
+    let backups = loadTreeBackups();
+    const last = backups[backups.length - 1];
+    if (last && (Date.now() - last.savedAt) < TREE_BACKUP_MIN_INTERVAL_MS) return;
+    const prevRaw = localStorage.getItem(TREE_KEY);
+    if (!prevRaw) return;
+    let prevTree;
+    try { prevTree = JSON.parse(prevRaw); } catch (e){ return; } // don't back up data that was already corrupt
+    if (!isValidTreeShape(prevTree)) return;
+    backups.push({ savedAt: Date.now(), tree: prevTree });
+    if (backups.length > MAX_TREE_BACKUPS) backups = backups.slice(backups.length - MAX_TREE_BACKUPS);
+    localStorage.setItem(TREE_BACKUP_KEY, JSON.stringify(backups));
+  } catch (err){ /* non-fatal, deliberately silent — see comment above */ }
+}
+
 function loadTree(){
   try {
     const raw = localStorage.getItem(TREE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (err){ console.warn('Could not read saved tree, starting fresh', err); }
+    if (raw){
+      const parsed = JSON.parse(raw);
+      if (isValidTreeShape(parsed)) return parsed;
+      throw new Error('saved tree has an invalid shape');
+    }
+  } catch (err){
+    console.warn('Could not read saved tree — attempting recovery', err);
+    try {
+      const raw = localStorage.getItem(TREE_KEY);
+      if (raw) localStorage.setItem(TREE_CORRUPTED_KEY, raw); // preserved, not discarded
+    } catch (e){ /* even this best-effort preservation can fail if storage is completely full — nothing more to do */ }
+    const backup = mostRecentValidBackup();
+    if (backup){
+      window.__brickRecoveredFromBackup = { savedAt: backup.savedAt };
+      return backup.tree;
+    }
+    window.__brickDataLossWarning = true;
+  }
   return seedTree();
 }
 function saveTree(tree){
-  try { localStorage.setItem(TREE_KEY, JSON.stringify(tree)); return true; }
-  catch (err){ console.warn('Could not save — local storage may be full', err); return false; }
+  try {
+    maybeBackupCurrentTree();
+    localStorage.setItem(TREE_KEY, JSON.stringify(tree));
+    return true;
+  } catch (err){
+    console.warn('Could not save — local storage may be full', err);
+    return false;
+  }
 }
 
 /* ---------- review log ---------- */

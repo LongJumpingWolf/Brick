@@ -9,7 +9,18 @@
 let tree = loadTree();
 let currentFolderId = 'root';
 
-function saveTreeNow(){ saveTree(tree); }
+/* Every call site that saves the tree needs to know if it actually
+   worked — silently swallowing a failed save (storage full, anything
+   else) means the person keeps working believing everything's saved,
+   and only discovers otherwise much later, possibly after closing the
+   tab. handleSaveFailure() (app.js) surfaces this loudly the first
+   time it happens in a session, then keeps a persistent — but not
+   modal-spamming — indicator up for the rest of it. */
+function saveTreeNow(){
+  const ok = saveTree(tree);
+  if (!ok && typeof handleSaveFailure === 'function') handleSaveFailure();
+  return ok;
+}
 
 /* ---------- tree walking ---------- */
 function nodeById(id, node){

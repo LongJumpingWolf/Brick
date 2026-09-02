@@ -187,10 +187,9 @@ function initGlobalHotkeys(){
     const onWallScreen = document.getElementById('screenWall').classList.contains('active');
 
     if (e.key === 'Escape'){
-      // The mandatory ImgBB backup modal is deliberately not
-      // dismissable — Escape must not close it while a batch upload
-      // is actually running.
-      if (anyOverlayOpen && anyOverlayOpen.id === 'imgbbUploadOverlay') return;
+      // Data-safety modals are deliberately not dismissable via
+      // Escape either — same reasoning as the ImgBB backup modal.
+      if (anyOverlayOpen && ['imgbbUploadOverlay','dataRecoveryOverlay','saveFailedOverlay'].includes(anyOverlayOpen.id)) return;
       if (anyOverlayOpen){ closeOverlay(anyOverlayOpen.id); return; }
       if (menuOpen){ closeTileMenu(); return; }
       if (document.activeElement === searchInput){ searchInput.blur(); return; }
@@ -205,6 +204,33 @@ function initGlobalHotkeys(){
 }
 
 /* ---------- boot ---------- */
+/* ---------- data safety: save failures + boot-time recovery notice ---------- */
+let saveFailureWarnedThisSession = false;
+function handleSaveFailure(){
+  if (saveFailureWarnedThisSession){
+    // already shown the full modal once this session — don't spam it
+    // on every subsequent failed save, just keep the status visible
+    // wherever Settings already shows it (renderTrashList-adjacent
+    // Data Safety section, if Settings happens to be open)
+    if (typeof renderBackupList === 'function') renderBackupList();
+    return;
+  }
+  saveFailureWarnedThisSession = true;
+  openOverlay('saveFailedOverlay', document.getElementById('saveFailedAckBtn'));
+}
+function checkDataRecoveryNoticeAtBoot(){
+  if (window.__brickRecoveredFromBackup){
+    const when = new Date(window.__brickRecoveredFromBackup.savedAt).toLocaleString();
+    document.getElementById('dataRecoveryText').textContent =
+      'Your saved data looked corrupted when this page loaded, so it was automatically restored from a backup taken ' + when + '. Anything changed after that point may be gone. Please export a fresh backup now, just in case.';
+    openOverlay('dataRecoveryOverlay', document.getElementById('dataRecoveryAckBtn'));
+  } else if (window.__brickDataLossWarning){
+    document.getElementById('dataRecoveryText').textContent =
+      'Your saved data looked corrupted when this page loaded, and no usable backup was found to restore from — starting from the demo content instead. If you\'ve exported a backup file before, use Settings → Import to bring it back.';
+    openOverlay('dataRecoveryOverlay', document.getElementById('dataRecoveryAckBtn'));
+  }
+}
+
 async function boot(){
   try { await seedDemoImage(); } catch (err){ console.warn('Demo seed image failed (non-fatal)', err); }
   document.body.classList.add('on-wall-screen'); // the initial screen is Wall, set directly in the HTML — showScreen() is never called for it, so this has to be set explicitly here too
@@ -217,5 +243,11 @@ async function boot(){
   initShortcutsOverlay();
   initLogoSwitcher();
   initGlobalHotkeys();
+
+  document.getElementById('dataRecoveryAckBtn').addEventListener('click', ()=> closeOverlay('dataRecoveryOverlay'));
+  document.getElementById('dataRecoveryExportBtn').addEventListener('click', ()=>{ closeOverlay('dataRecoveryOverlay'); openSettings(); openExportPicker(); });
+  document.getElementById('saveFailedAckBtn').addEventListener('click', ()=> closeOverlay('saveFailedOverlay'));
+  document.getElementById('saveFailedExportBtn').addEventListener('click', ()=>{ closeOverlay('saveFailedOverlay'); openSettings(); openExportPicker(); });
+  checkDataRecoveryNoticeAtBoot();
 }
 boot();

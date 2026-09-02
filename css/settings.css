@@ -13,6 +13,7 @@
 
 /* ---------- Recycle Bin rows ---------- */
 .trash-list{display:flex;flex-direction:column;gap:8px;}
+.backup-list{display:flex;flex-direction:column;gap:8px;}
 .trash-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--mortar-dark);border-radius:9px;padding:10px 12px;
 }
