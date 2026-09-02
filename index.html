@@ -156,7 +156,8 @@
       <div class="settings-row">
         <a class="brick-btn small" id="downloadExtensionBtn" href="downloads/brick-companion-extension.zip" download>Download Companion Extension</a>
       </div>
-      <p class="settings-status" id="extensionDownloadStatus">Placeholder for now — not the real extension yet.</p>
+      <p class="settings-status" id="extensionDownloadStatus">Loaded unpacked (Developer Mode) — see the extension's own README.md after unzipping for the exact steps, including editing host_permissions if Brick isn't on a *.vercel.app domain.</p>
+      <p class="settings-status" style="margin-top:6px;">Run <code>node test/background-core.test.js</code> inside the unzipped extension to verify the sync logic — no browser needed, 26 assertions.</p>
     </div>
 
     <div class="settings-section">

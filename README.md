@@ -209,8 +209,11 @@ deliberately left alone rather than auto-removed, permission lapsing
 being refused rather than silently mishandled, and `pagehide` alone
 triggering a real sync with no explicit call, plus confirming the
 companion-extension download button is a real link (not JS-only)
-pointing at a stable path.
-435 assertions, all
+pointing at a stable path, and — since that button's whole point is
+avoiding a silent placeholder — confirming the file actually at that
+path is the real extension (manifest, background, background-core,
+popup all present) and not the placeholder anymore.
+453 assertions, all
 currently passing.
 
 This process has caught real bugs more than once, including one this
@@ -435,22 +438,42 @@ Gear icon in the top bar.
   contents intact, listed with Restore and Delete Forever per item,
   plus an Empty Recycle Bin button. Restore puts it back where it came
   from, or at the top level if that Wall no longer exists.
-- **Companion Extension (in progress).** A browser extension is the
-  more reliable path to automatic on-disk backup than the in-page
-  folder link below — `chrome.downloads` permission is granted once at
-  install and doesn't have the periodic re-confirmation the File
-  System Access API applies to a directory handle. Meant to be loaded
-  unpacked via Developer Mode, not published — this is a personal
-  tool. The Settings screen already has a real "Download Companion
-  Extension" button pointing at a stable path
-  (`downloads/brick-companion-extension.zip`) — right now that file is
-  a placeholder (a `.zip` with just a README explaining it isn't ready
-  yet, so the button downloads something honest instead of 404ing or
-  silently doing nothing). Dropping the real extension at that exact
-  path is a file swap, not a code change — the button needs nothing
-  else touched once it exists. **Whether the Linked Backup Folder
-  section below stays, once the extension exists, hasn't been decided
-  yet** — noting that explicitly rather than assuming either way.
+- **Companion Extension.** A browser extension, not the in-page File
+  System Access version below — `chrome.downloads` permission is
+  granted once at install and doesn't have the periodic
+  re-confirmation FSA applies to a directory handle. Loaded unpacked
+  via Developer Mode, not published — this is a personal tool. Lives
+  in `js/extension-bridge.js` (Brick's side — `window.__brickBridge`,
+  a small, explicitly versioned API: `isReady()`, `getTreeSummary()`,
+  `getMirrorPlan()`) plus a separate `brick-extension/` project (not
+  part of this app's own deploy) containing the actual extension:
+  - `background-core.js` — the real sync decision logic (which tab,
+    dirty-check, retry/failure handling), deliberately written against
+    a plain `api` object instead of calling `chrome.*` directly, so
+    it's fully testable under plain Node — `node
+    test/background-core.test.js`, no browser needed, 26 assertions
+    covering the worst cases (no tab open, the bridge missing or not
+    ready yet, a version mismatch attempted anyway rather than refused
+    outright, one file failing without aborting the rest of the batch,
+    the fingerprint deliberately NOT persisted after a partial failure
+    so a real pending change can't get wrongly skipped next time,
+    overlapping syncs refused rather than left to race).
+  - `background.js` — wires that logic to real `chrome.*` calls:
+    `chrome.scripting.executeScript(..., { world: 'MAIN' })` to read
+    `window.__brickBridge` directly from the Brick tab (content
+    scripts run in an isolated JS world and can't see page globals —
+    this sidesteps that without a persistent injected script or a
+    postMessage relay), `chrome.downloads.download()` with a `data:`
+    URL to actually write each file, `chrome.alarms` for the timer
+    (survives service-worker restarts, unlike a plain `setInterval`
+    would in Manifest V3).
+  - The Settings screen's "Download Companion Extension" button
+    downloads the real thing now — points at
+    `downloads/brick-companion-extension.zip` inside this project;
+    dropping a newer version there is a file swap, no code change.
+  - **Whether the Linked Backup Folder section below stays now that
+    the extension is real hasn't been decided** — noted here
+    explicitly rather than assumed either way.
 - **Linked Backup Folder.** The closest thing to a real answer to
   "what if I just forget to export" — a genuine, live, on-disk mirror
   of the whole Wall/Brick tree, kept in sync automatically. Desktop

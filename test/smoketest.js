@@ -2233,6 +2233,17 @@ async function main(){
   doc.getElementById('settingsBackBtn').dispatchEvent(new window.Event('click', { bubbles:true }));
   await sleep(10);
 
+  // the file at that path should now be the REAL extension, not the
+  // placeholder — a proper regression check for exactly this: it
+  // silently staying a stub forever after the button was first built
+  const extensionZipPath = path.join(ROOT, 'downloads', 'brick-companion-extension.zip');
+  assert(fs.existsSync(extensionZipPath), 'a file actually exists at the path the download button points to');
+  const extensionZipBytes = fs.statSync(extensionZipPath).size;
+  assert(extensionZipBytes > 5000, 'the zip is genuinely substantial (real manifest+background+popup+icons), not a single placeholder text file — got ' + extensionZipBytes + ' bytes');
+  const extensionZipListing = require('child_process').execSync('unzip -l ' + JSON.stringify(extensionZipPath)).toString();
+  assert(extensionZipListing.includes('manifest.json') && extensionZipListing.includes('background.js') && extensionZipListing.includes('background-core.js') && extensionZipListing.includes('popup.html'), 'the zip actually contains the real extension files, not just a README — got listing:\n' + extensionZipListing);
+  assert(!extensionZipListing.includes('PLACEHOLDER'), 'the old placeholder text file is genuinely gone, not just sitting alongside the real files');
+
   // =========================================================
   // Extension bridge — the Brick-side API surface an extension would
   // actually call. Boot has long since finished by this point in the
